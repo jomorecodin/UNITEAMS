@@ -8,6 +8,7 @@ import { Landing } from '../pages/Landing';
 import { SignUp } from '../pages/SignUp';
 import { SignIn } from '../pages/SignIn';
 import { Dashboard } from '../pages/Dashboard';
+import { ApplyTutor } from '../pages/ApplyTutor';
 
 export const AppRouter: React.FC = () => {
   return (
@@ -28,6 +29,7 @@ export const AppRouter: React.FC = () => {
                   </ProtectedRoute>
                 }
               />
+              <Route path="/apply-tutor" element={<ApplyTutor />} />
             </Routes>
           </main>
           <Footer />

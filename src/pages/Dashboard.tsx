@@ -2,6 +2,7 @@ import React from 'react';
 import { useAuth } from '../context/AuthContext';
 import { Card } from '../components/Card';
 import { Button } from '../components/Button';
+import { Link } from 'react-router-dom';
 
 export const Dashboard: React.FC = () => {
   const { user, profile, signOut, loading } = useAuth();
@@ -87,6 +88,31 @@ export const Dashboard: React.FC = () => {
             <div className="flex flex-col sm:flex-row gap-4 justify-center">
               <Button variant="primary">Create Team</Button>
               <Button variant="secondary">Join Team</Button>
+            </div>
+          </div>
+        </Card>
+
+        <Card className="p-8 mt-8">
+          <div className="text-center space-y-6">
+            <h2 className="text-2xl font-semibold text-white">
+              Become a Tutor
+            </h2>
+            <p className="text-neutral-400 max-w-2xl mx-auto">
+              Ready to share your expertise? 
+              Apply now to become a Tutor and help other students succeed in your strongest subjects. 
+              Gain leadership experience, earn service hours, and reinforce your own knowledge. 
+              Strong academic record required.
+            </p>
+            <div className="flex flex-col sm:flex-row gap-4 justify-center">
+              <Link to="/apply-tutor">
+                <Button
+                  variant="primary"
+                  className="w-full sm:w-auto px-8 py-4 text-lg"
+                >
+                  Apply
+                </Button>
+              </Link>
+              
             </div>
           </div>
         </Card>
