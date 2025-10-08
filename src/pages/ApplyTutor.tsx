@@ -3,9 +3,11 @@ import { useAuth } from '../context/AuthContext';
 import { AuthLayout } from '../components/AuthLayout';
 import { Button } from '../components/Button';
 import { supabase } from '../lib/supabaseClient';
+import { useNavigate } from 'react-router-dom';
 
 export const ApplyTutor: React.FC = () => {
   const { user } = useAuth();
+  const navigate = useNavigate();
 
   const [subjectName, setSubjectName] = useState('');
   const [grade, setGrade] = useState('');
@@ -49,8 +51,8 @@ export const ApplyTutor: React.FC = () => {
 
     try {
       const requestObj = {
-        id_user: user?.id, // UUID
-        id_subject: Number(subjectName), // BIGINT
+        id_user: user?.id,
+        id_subject: Number(subjectName),
         grade: Number(grade),
         carreer_name: carreerName.trim(),
         description: description.trim(),
@@ -69,6 +71,9 @@ export const ApplyTutor: React.FC = () => {
         setGrade('');
         setCarreerName('');
         setDescription('');
+        setTimeout(() => {
+          navigate('/dashboard');
+        }, 1000);
       }
     } catch (err) {
       console.error('Error inesperado:', err);
