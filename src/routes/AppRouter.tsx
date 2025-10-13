@@ -9,6 +9,7 @@ import { SignUp } from '../pages/SignUp';
 import { SignIn } from '../pages/SignIn';
 import { Dashboard } from '../pages/Dashboard';
 import { ApplyTutor } from '../pages/ApplyTutor';
+import { CreateGroupPage } from '../pages/CreateTeamPage';
 
 export const AppRouter: React.FC = () => {
   return (
@@ -30,6 +31,7 @@ export const AppRouter: React.FC = () => {
                 }
               />
               <Route path="/apply-tutor" element={<ApplyTutor />} />
+              <Route path="/create-group" element={<CreateGroupPage />} />
             </Routes>
           </main>
           <Footer />
