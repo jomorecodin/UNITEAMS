@@ -17,20 +17,20 @@ export const ApplyTutor: React.FC = () => {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [message, setMessage] = useState('');
   const [subjects, setSubjects] = useState<{ id_subject: number; name: string }[]>([]);
+  const [loadingSubjects, setLoadingSubjects] = useState(true);
 
   useEffect(() => {
+    let isMounted = true;
     const fetchSubjects = async () => {
-      console.log(import.meta.env.VITE_SUPABASE_URL, import.meta.env.VITE_SUPABASE_ANON_KEY);
-      console.log('Cargando materias...');
+      setLoadingSubjects(true);
       const { data, error } = await supabase.from('subjects').select('id_subject, name');
-      if (error) {
-        console.error('Error cargando materias:', error.message);
-      } else {
-        console.log('Materias cargadas:', data);
+      if (isMounted) {
         setSubjects(data || []);
+        setLoadingSubjects(false);
       }
     };
     fetchSubjects();
+    return () => { isMounted = false; };
   }, []);
 
   const validateForm = () => {
@@ -100,13 +100,20 @@ export const ApplyTutor: React.FC = () => {
               onChange={e => setSubjectName(e.target.value)}
               className="appearance-none mt-1 block w-full px-3 py-2 border border-gray-400 rounded-md shadow-sm bg-black focus:outline-none focus:ring-red-500 focus:border-red-500 sm:text-sm"
               required
+              disabled={loadingSubjects}
             >
-              <option className="text-gray-400" value="">Selecciona una materia</option>
-              {subjects.map(subject => (
-              <option key={subject.id_subject} value={subject.id_subject} className="text-gray-400">
-                {subject.name}
-              </option>
-              ))}
+              {loadingSubjects ? (
+                <option>Cargando materias...</option>
+              ) : (
+                <>
+                  <option value="">Selecciona una materia</option>
+                  {subjects.map(subject => (
+                    <option key={subject.id_subject} value={subject.id_subject}>
+                      {subject.name}
+                    </option>
+                  ))}
+                </>
+              )}
             </select>
             <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center px-2 text-gray-400">
               <svg className="h-4 w-4" viewBox="0 0 20 20" fill="currentColor">
