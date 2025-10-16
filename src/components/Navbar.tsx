@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { useScrollDirection } from '../hooks/useScrollDirection';
@@ -9,11 +9,20 @@ export const Navbar: React.FC = () => {
   const { user, profile, signOut, loading } = useAuth();
   const navigate = useNavigate();
   const scrollDirection = useScrollDirection();
+  const [logoutLoading, setLogoutLoading] = useState(false);
 
   const handleSignOut = async () => {
-    const { error } = await signOut();
-    if (!error) {
+    setLogoutLoading(true);
+    try {
+      await signOut();
+      // No necesitas navigate('/') porque el AuthContext ya actualiza el estado
+      // y los componentes se rerenderizan automáticamente
+    } catch (error) {
+      console.error('Error en Navbar al cerrar sesión:', error);
+      // Forzar redirección incluso con error
       navigate('/');
+    } finally {
+      setLogoutLoading(false);
     }
   };
 
@@ -32,10 +41,11 @@ export const Navbar: React.FC = () => {
                 <Button
                   variant="secondary"
                   onClick={handleSignOut}
-                  loading={loading}
+                  loading={logoutLoading}
+                  disabled={logoutLoading}
                   className="px-4 py-2 text-sm"
                 >
-                  Cerrar Sesión
+                  {logoutLoading ? 'Cerrando...' : 'Cerrar Sesión'}
                 </Button>
               </div>
             ) : (
@@ -59,5 +69,3 @@ export const Navbar: React.FC = () => {
     </nav>
   );
 };
-
-

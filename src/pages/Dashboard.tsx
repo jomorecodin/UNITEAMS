@@ -5,11 +5,39 @@ import { Button } from '../components/Button';
 import { Link } from 'react-router-dom';
 
 export const Dashboard: React.FC = () => {
-  const { user, profile, signOut, loading } = useAuth();
+  const { user, profile, signOut, loading, initialLoading } = useAuth();
 
   const handleSignOut = async () => {
     await signOut();
   };
+
+  // ✅ CORREGIDO: Usar initialLoading para la carga inicial
+  if (initialLoading) {
+    return (
+      <div className="min-h-screen bg-black flex items-center justify-center">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-white mx-auto mb-4"></div>
+          <p className="text-white">Loading your dashboard...</p>
+        </div>
+      </div>
+    );
+  }
+
+  // ✅ CORREGIDO: Si no hay usuario después del loading inicial
+  if (!user) {
+    return (
+      <div className="min-h-screen bg-black flex items-center justify-center">
+        <div className="text-center">
+          <p className="text-white text-lg mb-4">Please sign in to access your dashboard</p>
+          <Link to="/signin">
+            <Button variant="primary">
+              Go to Login
+            </Button>
+          </Link>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-black px-4 sm:px-6 lg:px-8" style={{ paddingTop: '5rem', paddingBottom: '3rem' }}>
@@ -33,6 +61,7 @@ export const Dashboard: React.FC = () => {
           )}
         </div>
 
+        {/* Resto del componente igual */}
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 mb-8">
           <Card className="p-6">
             <div className="text-center">
@@ -120,7 +149,6 @@ export const Dashboard: React.FC = () => {
                   Apply
                 </Button>
               </Link>
-              
             </div>
           </div>
         </Card>

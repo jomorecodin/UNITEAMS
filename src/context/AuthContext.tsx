@@ -23,6 +23,7 @@ interface AuthContextType {
   session: Session | null;
   profile: UserProfile | null;
   loading: boolean;
+  initialLoading: boolean; // ✅ NUEVO: para carga inicial
   error: string | null;
   signUp: (
     email: string,
@@ -42,6 +43,7 @@ interface AuthContextType {
     avatarUrl?: string;
   }) => Promise<{ error: Error | null }>;
   clearError: () => void;
+  forceSignOut: () => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -60,7 +62,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
   const [user, setUser] = useState<User | null>(null);
   const [session, setSession] = useState<Session | null>(null);
   const [profile, setProfile] = useState<UserProfile | null>(null);
-  const [loading, setLoading] = useState(true);
+  const [initialLoading, setInitialLoading] = useState(true); // ✅ NUEVO
+  const [loading, setLoading] = useState(false); // Solo para operaciones
   const [error, setError] = useState<string | null>(null);
 
   // Function to fetch user profile
@@ -87,15 +90,28 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
   // Clear error function
   const clearError = () => setError(null);
 
+  // Force sign out function
+  const forceSignOut = async () => {
+    try {
+      await supabase.auth.signOut();
+    } catch (err) {
+      console.error('Error during force sign out:', err);
+    }
+  };
+
   useEffect(() => {
+    let mounted = true;
+
     // Get initial session
     const getSession = async () => {
       try {
-        setLoading(true);
+        setInitialLoading(true);
         const {
           data: { session },
           error,
         } = await supabase.auth.getSession();
+        
+        if (!mounted) return;
         
         if (error) {
           console.error('Session error:', error);
@@ -110,19 +126,25 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
           // Fetch user profile if user exists
           if (session?.user) {
             const userProfile = await fetchUserProfile(session.user.id);
-            setProfile(userProfile);
+            if (mounted) {
+              setProfile(userProfile);
+            }
           } else {
             setProfile(null);
           }
         }
       } catch (err) {
         console.error('Failed to get session:', err);
-        setError('Failed to get session');
-        setSession(null);
-        setUser(null);
-        setProfile(null);
+        if (mounted) {
+          setError('Failed to get session');
+          setSession(null);
+          setUser(null);
+          setProfile(null);
+        }
       } finally {
-        setLoading(false);
+        if (mounted) {
+          setInitialLoading(false);
+        }
       }
     };
 
@@ -134,26 +156,33 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
     } = supabase.auth.onAuthStateChange(async (event, session) => {
       console.log('Auth state changed:', event, session);
       
+      if (!mounted) return;
+      
       setSession(session);
       setUser(session?.user ?? null);
       
       if (session?.user) {
         try {
           const userProfile = await fetchUserProfile(session.user.id);
-          setProfile(userProfile);
+          if (mounted) {
+            setProfile(userProfile);
+          }
         } catch (err) {
           console.error('Error fetching profile on auth change:', err);
-          setProfile(null);
+          if (mounted) {
+            setProfile(null);
+          }
         }
       } else {
         setProfile(null);
       }
       
-      setLoading(false);
+      setInitialLoading(false);
       setError(null);
     });
 
     return () => {
+      mounted = false;
       subscription.unsubscribe();
     };
   }, []);
@@ -167,6 +196,11 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
     setLoading(true);
     setError(null);
     try {
+      // Si ya hay una sesión activa, cerrarla primero
+      if (session) {
+        await supabase.auth.signOut();
+      }
+
       const { data, error } = await supabase.auth.signUp({
         email,
         password,
@@ -204,6 +238,11 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
     setLoading(true);
     setError(null);
     try {
+      // Si ya hay una sesión activa, cerrarla primero
+      if (session && user?.email !== email) {
+        await supabase.auth.signOut();
+      }
+
       const { data, error } = await supabase.auth.signInWithPassword({
         email,
         password,
@@ -230,29 +269,31 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
     }
   };
 
-  const signOut = async (): Promise<void> => {
-    setLoading(true);
-    setError(null);
-    try {
-      const { error } = await supabase.auth.signOut();
-      if (error) {
-        console.error('Sign out error:', error);
-        setError(error.message);
-        throw error;
-      }
-      
-      console.log('Sign out successful');
-      // Los estados se limpiarán automáticamente por el listener onAuthStateChange
-      
-    } catch (err) {
-      console.error('Error during sign out:', err);
-      const errorMessage = 'An unexpected error occurred during sign out';
-      setError(errorMessage);
-      throw err;
-    } finally {
-      setLoading(false);
+const signOut = async (): Promise<void> => {
+  setLoading(true);
+  setError(null);
+  try {
+    const { error } = await supabase.auth.signOut();
+    if (error) {
+      console.error('Sign out error:', error);
+      setError(error.message);
+      throw error;
     }
-  };
+    setUser(null);
+    setSession(null);
+    setProfile(null);
+  } catch (err) {
+    console.error('Error during sign out:', err);
+    const errorMessage = 'An unexpected error occurred during sign out';
+    setError(errorMessage);
+    setUser(null);
+    setSession(null);
+    setProfile(null);
+    throw err;
+  } finally {
+    setLoading(false);
+  }
+};
 
   const updateProfile = async (updates: {
     firstName?: string;
@@ -291,12 +332,14 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
     session,
     profile,
     loading,
+    initialLoading,
     error,
     signUp,
     signIn,
     signOut,
     updateProfile,
     clearError,
+    forceSignOut,
   };
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
