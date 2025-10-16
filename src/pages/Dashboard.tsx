@@ -92,6 +92,16 @@ export const Dashboard: React.FC = () => {
             <div className="flex flex-col sm:flex-row gap-4 justify-center">
               <Button variant="primary">Crear equipo</Button>
               <Button variant="secondary">Unirse a un equipo</Button>
+              <Link to="/create-group">
+                <Button variant="primary">
+                  Create Study Group
+                </Button>
+              </Link>
+              <Link to="/study-groups">
+                <Button variant="secondary">
+                  Join Team
+                </Button>
+              </Link>
             </div>
           </div>
         </Card>
@@ -159,5 +169,3 @@ export const Dashboard: React.FC = () => {
     </div>
   );
 };
-
-

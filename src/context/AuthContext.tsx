@@ -34,13 +34,14 @@ interface AuthContextType {
     email: string,
     password: string
   ) => Promise<{ error: AuthError | null }>;
-  signOut: () => Promise<{ error: AuthError | null }>;
+  signOut: () => Promise<void>;
   updateProfile: (updates: {
     firstName?: string;
     lastName?: string;
     bio?: string;
     avatarUrl?: string;
   }) => Promise<{ error: Error | null }>;
+  clearError: () => void;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -83,16 +84,25 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
     }
   };
 
+  // Clear error function
+  const clearError = () => setError(null);
+
   useEffect(() => {
     // Get initial session
     const getSession = async () => {
       try {
+        setLoading(true);
         const {
           data: { session },
           error,
         } = await supabase.auth.getSession();
+        
         if (error) {
+          console.error('Session error:', error);
           setError(error.message);
+          setSession(null);
+          setUser(null);
+          setProfile(null);
         } else {
           setSession(session);
           setUser(session?.user ?? null);
@@ -101,10 +111,16 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
           if (session?.user) {
             const userProfile = await fetchUserProfile(session.user.id);
             setProfile(userProfile);
+          } else {
+            setProfile(null);
           }
         }
-      } catch {
+      } catch (err) {
+        console.error('Failed to get session:', err);
         setError('Failed to get session');
+        setSession(null);
+        setUser(null);
+        setProfile(null);
       } finally {
         setLoading(false);
       }
@@ -115,14 +131,20 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
     // Listen for auth changes
     const {
       data: { subscription },
-    } = supabase.auth.onAuthStateChange(async (_event, session) => {
+    } = supabase.auth.onAuthStateChange(async (event, session) => {
+      console.log('Auth state changed:', event, session);
+      
       setSession(session);
       setUser(session?.user ?? null);
       
-      // Fetch user profile if user exists, clear if not
       if (session?.user) {
-        const userProfile = await fetchUserProfile(session.user.id);
-        setProfile(userProfile);
+        try {
+          const userProfile = await fetchUserProfile(session.user.id);
+          setProfile(userProfile);
+        } catch (err) {
+          console.error('Error fetching profile on auth change:', err);
+          setProfile(null);
+        }
       } else {
         setProfile(null);
       }
@@ -131,7 +153,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
       setError(null);
     });
 
-    return () => subscription.unsubscribe();
+    return () => {
+      subscription.unsubscribe();
+    };
   }, []);
 
   const signUp = async (
@@ -143,7 +167,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
     setLoading(true);
     setError(null);
     try {
-      const { error } = await supabase.auth.signUp({
+      const { data, error } = await supabase.auth.signUp({
         email,
         password,
         options: {
@@ -154,12 +178,21 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
           },
         },
       });
+      
       if (error) {
         setError(error.message);
+        return { error };
       }
-      return { error };
-    } catch {
-      const errorMessage = 'An unexpected error occurred';
+      
+      // If signup successful and we have a user, fetch profile
+      if (data.user) {
+        const userProfile = await fetchUserProfile(data.user.id);
+        setProfile(userProfile);
+      }
+      
+      return { error: null };
+    } catch (err) {
+      const errorMessage = 'An unexpected error occurred during sign up';
       setError(errorMessage);
       return { error: { message: errorMessage } as AuthError };
     } finally {
@@ -171,16 +204,25 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
     setLoading(true);
     setError(null);
     try {
-      const { error } = await supabase.auth.signInWithPassword({
+      const { data, error } = await supabase.auth.signInWithPassword({
         email,
         password,
       });
+      
       if (error) {
         setError(error.message);
+        return { error };
       }
-      return { error };
-    } catch {
-      const errorMessage = 'An unexpected error occurred';
+      
+      // If signin successful, fetch profile
+      if (data.user) {
+        const userProfile = await fetchUserProfile(data.user.id);
+        setProfile(userProfile);
+      }
+      
+      return { error: null };
+    } catch (err) {
+      const errorMessage = 'An unexpected error occurred during sign in';
       setError(errorMessage);
       return { error: { message: errorMessage } as AuthError };
     } finally {
@@ -188,19 +230,25 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
     }
   };
 
-  const signOut = async () => {
+  const signOut = async (): Promise<void> => {
     setLoading(true);
     setError(null);
     try {
       const { error } = await supabase.auth.signOut();
       if (error) {
+        console.error('Sign out error:', error);
         setError(error.message);
+        throw error;
       }
-      return { error };
-    } catch {
-      const errorMessage = 'An unexpected error occurred';
+      
+      console.log('Sign out successful');
+      // Los estados se limpiarán automáticamente por el listener onAuthStateChange
+      
+    } catch (err) {
+      console.error('Error during sign out:', err);
+      const errorMessage = 'An unexpected error occurred during sign out';
       setError(errorMessage);
-      return { error: { message: errorMessage } as AuthError };
+      throw err;
     } finally {
       setLoading(false);
     }
@@ -248,6 +296,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
     signIn,
     signOut,
     updateProfile,
+    clearError,
   };
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
