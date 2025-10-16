@@ -44,19 +44,19 @@ export const Dashboard: React.FC = () => {
       <div className="max-w-4xl mx-auto">
         <div className="text-center mb-12">
           <h1 className="text-4xl font-bold text-white mb-4">
-            Welcome to your Dashboard
+            Bienvenido a tu Panel
           </h1>
           <p className="text-neutral-400 text-lg">
-            Hello, {profile?.display_name || profile?.first_name || user?.email}! This is your personal workspace.
+            Hola, {profile?.display_name || profile?.first_name || user?.email}! Este es tu espacio personal de trabajo.
           </p>
           {profile && (
             <div className="mt-4 text-sm text-neutral-500">
-              <p>Email: {profile.email}</p>
+              <p>Correo: {profile.email}</p>
               {profile.first_name && profile.last_name && (
-                <p>Full Name: {profile.first_name} {profile.last_name}</p>
+                <p>Nombre completo: {profile.first_name} {profile.last_name}</p>
               )}
-              <p>Role: {profile.role}</p>
-              <p>Member since: {new Date(profile.created_at).toLocaleDateString()}</p>
+              <p>Rol: {profile.role}</p>
+              <p>Miembro desde: {new Date(profile.created_at).toLocaleDateString()}</p>
             </div>
           )}
         </div>
@@ -68,9 +68,9 @@ export const Dashboard: React.FC = () => {
               <div className="w-12 h-12 bg-neutral-800 rounded-full mx-auto mb-4 flex items-center justify-center">
                 <span className="text-white text-xl">👥</span>
               </div>
-              <h3 className="text-lg font-semibold text-white mb-2">Teams</h3>
+              <h3 className="text-lg font-semibold text-white mb-2">Equipos</h3>
               <p className="text-neutral-400 text-sm">
-                Manage your teams and collaborate with others
+                Administra tus equipos y colabora con otros
               </p>
             </div>
           </Card>
@@ -78,13 +78,14 @@ export const Dashboard: React.FC = () => {
           <Card className="p-6">
             <div className="text-center">
               <div className="w-12 h-12 bg-neutral-800 rounded-full mx-auto mb-4 flex items-center justify-center">
-                <span className="text-white text-xl">📋</span>
+                
+                <span className="text-white text-xl">🗂️</span>
               </div>
               <h3 className="text-lg font-semibold text-white mb-2">
-                Projects
+                Proyectos
               </h3>
               <p className="text-neutral-400 text-sm">
-                Track your projects and monitor progress
+                Haz seguimiento de tus proyectos y monitorea el progreso
               </p>
             </div>
           </Card>
@@ -92,29 +93,34 @@ export const Dashboard: React.FC = () => {
           <Card className="p-6">
             <div className="text-center">
               <div className="w-12 h-12 bg-neutral-800 rounded-full mx-auto mb-4 flex items-center justify-center">
-                <span className="text-white text-xl">⚙️</span>
+                
+                <span className="text-white text-xl">🛠️</span>
               </div>
               <h3 className="text-lg font-semibold text-white mb-2">
-                Settings
+                Configuración
               </h3>
               <p className="text-neutral-400 text-sm">
-                Customize your account and preferences
+                Personaliza tu cuenta y preferencias
               </p>
             </div>
-          </Card>
+          </Card>         
         </div>
 
         <Card className="p-8">
           <div className="text-center space-y-6">
+            {/* Icono para Primeros Pasos */}
+            <div className="w-12 h-12 bg-neutral-800 rounded-full mx-auto flex items-center justify-center mb-4">
+              <span className="text-white text-2xl">🚀</span>
+            </div>
             <h2 className="text-2xl font-semibold text-white">
-              Getting Started
+              Primeros Pasos
             </h2>
             <p className="text-neutral-400 max-w-2xl mx-auto">
-              This is a placeholder dashboard. In a real application, you would
-              see your teams, projects, notifications, and other relevant
-              information here.
+              Este es un panel de ejemplo. En una aplicación real, aquí verías tus equipos, proyectos, notificaciones y otra información relevante.
             </p>
             <div className="flex flex-col sm:flex-row gap-4 justify-center">
+              <Button variant="primary">Crear equipo</Button>
+              <Button variant="secondary">Unirse a un equipo</Button>
               <Link to="/create-group">
                 <Button variant="primary">
                   Create Study Group
@@ -131,14 +137,18 @@ export const Dashboard: React.FC = () => {
 
         <Card className="p-8 mt-8">
           <div className="text-center space-y-6">
+            {/* Icono para Conviértete en Tutor */}
+            <div className="w-12 h-12 bg-neutral-800 rounded-full mx-auto flex items-center justify-center mb-4">
+              <span className="text-white text-2xl">🎓</span>
+            </div>
             <h2 className="text-2xl font-semibold text-white">
-              Become a Tutor
+              Conviértete en Tutor
             </h2>
             <p className="text-neutral-400 max-w-2xl mx-auto">
-              Ready to share your expertise? 
-              Apply now to become a Tutor and help other students succeed in your strongest subjects. 
-              Gain leadership experience, earn service hours, and reinforce your own knowledge. 
-              Strong academic record required.
+              ¿Listo para compartir tu experiencia? 
+              Aplica ahora para ser Tutor y ayuda a otros estudiantes a tener éxito en tus materias más fuertes. 
+              Gana experiencia en liderazgo, obtén horas de servicio y refuerza tus propios conocimientos. 
+              Se requiere un buen historial académico.
             </p>
             <div className="flex flex-col sm:flex-row gap-4 justify-center">
               <Link to="/apply-tutor">
@@ -146,12 +156,32 @@ export const Dashboard: React.FC = () => {
                   variant="primary"
                   className="w-full sm:w-auto px-8 py-4 text-lg"
                 >
-                  Apply
+                  Aplicar
                 </Button>
               </Link>
             </div>
           </div>
         </Card>
+
+        <Card className="p-6 mt-8">
+            <div className="text-center">
+              <div className="w-12 h-12 bg-neutral-800 rounded-full mx-auto mb-4 flex items-center justify-center">
+                {/* Icono de materias */}
+                <span className="text-white text-xl">📚</span>
+              </div>
+              <h3 className="text-lg font-semibold text-white mb-2">
+                Registro de Materias
+              </h3>
+              <p className="text-neutral-400 text-sm">
+                Consulta y registra nuevas materias.
+              </p>
+              <div className="mt-4">
+                <Link to="/subjects-register">
+                  <Button variant="primary">Ir</Button>
+                </Link>
+              </div>
+            </div>
+          </Card>
 
         <div className="text-center mt-8">
           <Button
@@ -160,7 +190,7 @@ export const Dashboard: React.FC = () => {
             loading={loading}
             className="px-6 py-3"
           >
-            Sign Out
+            Cerrar sesión
           </Button>
         </div>
       </div>
