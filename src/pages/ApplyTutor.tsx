@@ -3,7 +3,7 @@ import { useAuth } from '../context/AuthContext';
 import { AuthLayout } from '../components/AuthLayout';
 import { Button } from '../components/Button';
 import { supabase } from '../lib/supabaseClient';
-import { useNavigate } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 
 export const ApplyTutor: React.FC = () => {
   const { user } = useAuth();
@@ -204,6 +204,14 @@ export const ApplyTutor: React.FC = () => {
           </Button>
         </div>
       </form>
+      {/* Back to Dashboard */}
+        <div className="text-center mt-12">
+          <Link to="/dashboard">
+            <Button variant="secondary">
+              Volver al Dashboard
+            </Button>
+          </Link>
+        </div>
     </AuthLayout>
   );
 };

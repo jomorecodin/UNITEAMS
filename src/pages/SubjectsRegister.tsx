@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { useNavigate } from 'react-router-dom'; // <-- Agrega este import
+import { Link, useNavigate } from 'react-router-dom'; // <-- Agrega este import
 import { supabase } from '../lib/supabaseClient';
 import { Card } from '../components/Card';
 import { Button } from '../components/Button';
@@ -98,6 +98,14 @@ const SubjectsRegister: React.FC = () => {
             Registrar materia
           </Button>
         </form>
+        {/* Back to Dashboard */}
+        <div className="text-center mt-12">
+          <Link to="/dashboard">
+            <Button variant="secondary">
+              Volver al Dashboard
+            </Button>
+          </Link>
+        </div>
       </Card>
     </div>
   );

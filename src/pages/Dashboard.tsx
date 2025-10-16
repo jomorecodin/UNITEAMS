@@ -119,8 +119,6 @@ export const Dashboard: React.FC = () => {
               Este es un panel de ejemplo. En una aplicación real, aquí verías tus equipos, proyectos, notificaciones y otra información relevante.
             </p>
             <div className="flex flex-col sm:flex-row gap-4 justify-center">
-              <Button variant="primary">Crear equipo</Button>
-              <Button variant="secondary">Unirse a un equipo</Button>
               <Link to="/create-group">
                 <Button variant="primary">
                   Create Study Group
