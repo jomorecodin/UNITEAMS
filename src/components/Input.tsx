@@ -5,6 +5,7 @@ interface InputProps extends React.InputHTMLAttributes<HTMLInputElement> {
   error?: string;
   showPasswordToggle?: boolean;
   icon?: React.ReactNode;
+  helpText?: string; // ✅ NUEVA PROP
 }
 
 export const Input: React.FC<InputProps> = ({ 
@@ -14,6 +15,7 @@ export const Input: React.FC<InputProps> = ({
   className = '', 
   showPasswordToggle = false,
   icon,
+  helpText, // ✅ NUEVA PROP
   type = 'text',
   ...props 
 }) => {
@@ -41,6 +43,7 @@ export const Input: React.FC<InputProps> = ({
             error ? 'border-red-500 focus:ring-red-500 focus:border-red-500' : ''
           } ${isFocused ? 'ring-2 ring-red-500 border-red-500' : ''} ${className}`}
           aria-invalid={error ? 'true' : 'false'}
+          aria-describedby={helpText ? `${inputId}-help` : undefined}
           onFocus={() => setIsFocused(true)}
           onBlur={() => setIsFocused(false)}
           {...props}
@@ -66,6 +69,13 @@ export const Input: React.FC<InputProps> = ({
           </button>
         )}
       </div>
+      
+      {helpText && !error && (
+        <p id={`${inputId}-help`} className="text-sm text-neutral-400">
+          {helpText}
+        </p>
+      )}
+      
       {error && (
         <div className="flex items-center space-x-1">
           <svg className="h-4 w-4 text-red-400 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
