@@ -1,10 +1,11 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Card } from '../components/Card';
 import { Button } from '../components/Button';
 import { Input } from '../components/Input';
-import { useAuth } from '../context/AuthContext'; // ✅ IMPORTAR EL CONTEXTO DE AUTH
+import { useAuth } from '../context/AuthContext';
 
 interface CreateGroupPage {
+  name: string; // ✅ NUEVO: Campo para el nombre del grupo
   subject: string;
   sessionType: 'seguimiento' | 'examen';
   date: string;
@@ -14,9 +15,34 @@ interface CreateGroupPage {
   isPrivate: boolean;
 }
 
+// ✅ LISTA DE MATERIAS PREDEFINIDAS
+const SUBJECTS = [
+  'Cálculo Diferencial',
+  'Cálculo Integral', 
+  'Álgebra Lineal',
+  'Física I',
+  'Física II',
+  'Química General',
+  'Programación I',
+  'Programación II',
+  'Estructuras de Datos',
+  'Base de Datos',
+  'Redes de Computadoras',
+  'Sistemas Operativos',
+  'Ingeniería de Software',
+  'Inteligencia Artificial',
+  'Machine Learning',
+  'Estadística',
+  'Investigación de Operaciones',
+  'Economía',
+  'Contabilidad',
+  'Administración'
+];
+
 export const CreateGroupPage: React.FC = () => {
-  const { user } = useAuth(); // ✅ OBTENER USUARIO DEL CONTEXTO
+  const { user } = useAuth();
   const [formData, setFormData] = useState<CreateGroupPage>({
+    name: '', // ✅ NUEVO: Nombre del grupo
     subject: '',
     sessionType: 'seguimiento',
     date: '',
@@ -69,7 +95,14 @@ export const CreateGroupPage: React.FC = () => {
   const validateForm = (): boolean => {
     const newErrors: { [key: string]: string } = {};
 
-    if (!formData.subject.trim()) {
+    // ✅ VALIDACIÓN ACTUALIZADA
+    if (!formData.name.trim()) {
+      newErrors.name = 'El nombre del grupo es requerido';
+    } else if (formData.name.length < 5) {
+      newErrors.name = 'El nombre debe tener al menos 5 caracteres';
+    }
+
+    if (!formData.subject) {
       newErrors.subject = 'La materia es requerida';
     }
 
@@ -119,7 +152,7 @@ export const CreateGroupPage: React.FC = () => {
     }
   };
 
-  // ✅ FUNCIÓN ACTUALIZADA: Llama al backend Java
+  // ✅ FUNCIÓN ACTUALIZADA
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
@@ -133,37 +166,46 @@ export const CreateGroupPage: React.FC = () => {
     setIsSubmitting(true);
 
     try {
-      // Obtener el token de Supabase
-      const token = localStorage.getItem('supabase.auth.token');
-      if (!token) {
+      const tokenKey = 'sb-zskuikxfcjobpygoueqp-auth-token';
+      const tokenData = localStorage.getItem(tokenKey);
+      
+      if (!tokenData) {
         throw new Error('No hay sesión activa. Por favor, inicia sesión nuevamente.');
       }
 
-      // Parsear el token (Supabase lo guarda en un formato específico)
-      const authData = JSON.parse(token);
-      const accessToken = authData.currentSession?.access_token;
+      const authData = JSON.parse(tokenData);
+      const accessToken = authData.access_token;
 
       if (!accessToken) {
         throw new Error('No se pudo obtener el token de acceso');
       }
 
-      // Preparar los datos para el backend
+      console.log('✅ Token encontrado:', accessToken.substring(0, 20) + '...');
+
+      // ✅ GENERAR CÓDIGO EN EL FRONTEND
+      const generateCode = () => {
+        return Math.random().toString(36).substring(2, 10).toUpperCase();
+      };
+
+      // ✅ PREPARAR DATOS COMPLETOS (SIN generar nombre automático)
       const requestData = {
-        name: `${formData.subject} - ${formData.sessionType === 'examen' ? 'Preparación Examen' : 'Seguimiento'}`,
+        name: formData.name, // ✅ USAR el nombre ingresado por el usuario
         subject: formData.subject,
-        sessionType: formData.sessionType.toUpperCase(), // Convertir a mayúsculas para el enum
+        sessionType: formData.sessionType, // ✅ Ya en minúsculas
         meetingDate: formData.date,
-        meetingTime: formData.time + ':00', // Agregar segundos
+        meetingTime: formData.time + ':00',
         description: formData.description,
         maxParticipants: formData.maxParticipants,
         isPrivate: formData.isPrivate,
-        tutorName: user?.user_metadata?.full_name || 'Por asignar',
-        joinLink: null // Puedes generar un enlace automáticamente después
+        tutorName: user?.user_metadata?.full_name || user?.email || 'Por asignar',
+        joinLink: null,
+        code: generateCode(),
+        createdBy: user?.id,
+        currentParticipants: 1
       };
 
-      console.log('Enviando datos al backend:', requestData);
+      console.log('📤 Enviando datos al backend:', requestData);
 
-      // Llamar al endpoint del backend Java
       const response = await fetch('http://localhost:8080/api/study-groups', {
         method: 'POST',
         headers: {
@@ -180,27 +222,14 @@ export const CreateGroupPage: React.FC = () => {
 
       const createdGroup = await response.json();
       
-      // Éxito - mostrar mensaje con el código del grupo
+      // ✅ ÉXITO - Redirigir al dashboard inmediatamente
       alert(`¡Grupo de estudio ${formData.isPrivate ? 'privado' : 'público'} creado exitosamente!\nCódigo del grupo: ${createdGroup.code}`);
       
-      // Reset form
-      setFormData({
-        subject: '',
-        sessionType: 'seguimiento',
-        date: '',
-        time: '',
-        description: '',
-        maxParticipants: 10,
-        isPrivate: false
-      });
-
-      // Redirigir a la página de grupos después de 2 segundos
-      setTimeout(() => {
-        window.location.href = '/study-groups';
-      }, 2000);
+      // ✅ REDIRIGIR AL DASHBOARD
+      window.location.href = '/dashboard'; // Cambia esta ruta según tu app
       
     } catch (error: any) {
-      console.error('Error al crear el grupo:', error);
+      console.error('❌ Error al crear el grupo:', error);
       setErrors({ 
         submit: error.message || 'Error al crear el grupo de estudio. Intenta nuevamente.' 
       });
@@ -209,7 +238,6 @@ export const CreateGroupPage: React.FC = () => {
     setIsSubmitting(false);
   };
 
-  // Resto del componente se mantiene igual...
   return (
     <div className="min-h-screen bg-black px-4 sm:px-6 lg:px-8" style={{ paddingTop: '5rem', paddingBottom: '3rem' }}>
       <div className="max-w-2xl mx-auto">
@@ -224,19 +252,67 @@ export const CreateGroupPage: React.FC = () => {
 
         <Card className="p-6">
           <form onSubmit={handleSubmit} className="space-y-6">
-            {/* Materia */}
+            {/* ✅ NUEVO: Nombre del Grupo */}
             <Input
-              label="Materia"
-              value={formData.subject}
-              onChange={(e) => handleInputChange('subject', e.target.value)}
-              error={errors.subject}
-              placeholder="Ej: Cálculo Diferencial, Física I, Programación..."
+              label="Nombre del Grupo"
+              value={formData.name}
+              onChange={(e) => handleInputChange('name', e.target.value)}
+              error={errors.name}
+              placeholder="Ej: Grupo de Estudio de Cálculo, Preparación para Examen Final..."
               icon={<BookIcon />}
               autoComplete="off"
               required
+              helpText="Un nombre descriptivo para tu grupo de estudio"
             />
 
-            {/* Tipo de Sesión */}
+            {/* ✅ ACTUALIZADO: Select de Materias */}
+            <div>
+              <label htmlFor="subject" className="block text-sm font-medium text-white mb-2">
+                Materia
+              </label>
+              <div className="relative">
+                <select
+                  id="subject"
+                  value={formData.subject}
+                  onChange={(e) => handleInputChange('subject', e.target.value)}
+                  className={`w-full px-4 py-3 bg-neutral-900 border-2 rounded-lg text-white placeholder-neutral-500 focus:outline-none focus:ring-2 focus:ring-red-500 focus:border-red-500 transition-all duration-200 appearance-none ${
+                    errors.subject ? 'border-red-500' : 'border-neutral-700'
+                  }`}
+                  required
+                >
+                  <option value="">Selecciona una materia</option>
+                  {SUBJECTS.map((subject) => (
+                    <option key={subject} value={subject}>
+                      {subject}
+                    </option>
+                  ))}
+                  <option value="otro">Otra materia...</option>
+                </select>
+                <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center px-2 text-neutral-400">
+                  <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                  </svg>
+                </div>
+              </div>
+              {errors.subject && (
+                <p className="mt-1 text-sm text-red-400">{errors.subject}</p>
+              )}
+            </div>
+
+            {/* ✅ MOSTRAR INPUT PARA OTRA MATERIA SI SE SELECCIONA "OTRO" */}
+            {formData.subject === 'otro' && (
+              <Input
+                label="Especifica la materia"
+                value={formData.subject}
+                onChange={(e) => handleInputChange('subject', e.target.value)}
+                placeholder="Ingresa el nombre de la materia..."
+                icon={<BookIcon />}
+                autoComplete="off"
+                required
+              />
+            )}
+
+            {/* Tipo de Sesión (se mantiene igual) */}
             <div>
               <label className="block text-sm font-medium text-white mb-3">
                 Tipo de Sesión
@@ -276,7 +352,7 @@ export const CreateGroupPage: React.FC = () => {
               </div>
             </div>
 
-            {/* Visibilidad del Grupo */}
+            {/* Visibilidad del Grupo (se mantiene igual) */}
             <div>
               <label className="block text-sm font-medium text-white mb-3">
                 Visibilidad del Grupo
@@ -322,7 +398,7 @@ export const CreateGroupPage: React.FC = () => {
               </p>
             </div>
 
-            {/* Fecha y Hora */}
+            {/* Fecha y Hora (se mantiene igual) */}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <Input
                 label="Fecha"
@@ -345,7 +421,7 @@ export const CreateGroupPage: React.FC = () => {
               />
             </div>
 
-            {/* Número máximo de participantes */}
+            {/* Número máximo de participantes (se mantiene igual) */}
             <Input
               label="Máximo de Participantes"
               type="number"
@@ -359,7 +435,7 @@ export const CreateGroupPage: React.FC = () => {
               helpText="Mínimo 8 participantes para asegurar un buen ambiente de estudio"
             />
 
-            {/* Descripción */}
+            {/* Descripción (se mantiene igual) */}
             <div>
               <label htmlFor="description" className="block text-sm font-medium text-white mb-2">
                 Descripción de la Sesión
@@ -382,10 +458,11 @@ export const CreateGroupPage: React.FC = () => {
               </p>
             </div>
 
-            {/* Resumen de configuración */}
+            {/* Resumen de configuración ACTUALIZADO */}
             <Card className="p-4 bg-neutral-800/50 border-neutral-700">
               <h4 className="text-white font-semibold mb-2">Resumen de tu grupo:</h4>
               <div className="text-sm text-neutral-400 space-y-1">
+                <p>• <span className="text-white">Nombre:</span> {formData.name || 'No especificado'}</p>
                 <p>• <span className="text-white">Materia:</span> {formData.subject || 'No especificada'}</p>
                 <p>• <span className="text-white">Tipo:</span> {formData.sessionType === 'examen' ? 'Preparación Examen' : 'Seguimiento'}</p>
                 <p>• <span className="text-white">Visibilidad:</span> {formData.isPrivate ? 'Privado 🔒' : 'Público 🌍'}</p>
@@ -396,7 +473,7 @@ export const CreateGroupPage: React.FC = () => {
               </div>
             </Card>
 
-            {/* Mensaje de error general */}
+            {/* Mensaje de error general (se mantiene igual) */}
             {errors.submit && (
               <div className="bg-red-900/20 border border-red-500/50 rounded-lg p-4">
                 <div className="flex items-center space-x-2">
@@ -408,7 +485,7 @@ export const CreateGroupPage: React.FC = () => {
               </div>
             )}
 
-            {/* Botones */}
+            {/* Botones (se mantiene igual) */}
             <div className="flex flex-col sm:flex-row gap-4 pt-4">
               <Button
                 type="submit"
@@ -431,7 +508,7 @@ export const CreateGroupPage: React.FC = () => {
           </form>
         </Card>
 
-        {/* Información adicional (mantener igual) */}
+        {/* Información adicional (se mantiene igual) */}
         <Card className="p-6 mt-6">
           <div className="text-center">
             <h3 className="text-lg font-semibold text-white mb-3">
