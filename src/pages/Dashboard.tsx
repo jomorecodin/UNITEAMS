@@ -78,7 +78,6 @@ export const Dashboard: React.FC = () => {
           <Card className="p-6">
             <div className="text-center">
               <div className="w-12 h-12 bg-neutral-800 rounded-full mx-auto mb-4 flex items-center justify-center">
-                
                 <span className="text-white text-xl">🗂️</span>
               </div>
               <h3 className="text-lg font-semibold text-white mb-2">
@@ -93,7 +92,6 @@ export const Dashboard: React.FC = () => {
           <Card className="p-6">
             <div className="text-center">
               <div className="w-12 h-12 bg-neutral-800 rounded-full mx-auto mb-4 flex items-center justify-center">
-                
                 <span className="text-white text-xl">🛠️</span>
               </div>
               <h3 className="text-lg font-semibold text-white mb-2">
@@ -103,7 +101,9 @@ export const Dashboard: React.FC = () => {
                 Personaliza tu cuenta y preferencias
               </p>
             </div>
-          </Card>         
+          </Card>
+
+          
         </div>
 
         <Card className="p-8">
@@ -175,6 +175,26 @@ export const Dashboard: React.FC = () => {
               </p>
               <div className="mt-4">
                 <Link to="/subjects-register">
+                  <Button variant="primary">Ir</Button>
+                </Link>
+              </div>
+            </div>
+          </Card>
+
+          
+          <Card className="p-6 mt-8">
+            <div className="text-center">
+              <div className="w-12 h-12 bg-neutral-800 rounded-full mx-auto mb-4 flex items-center justify-center">
+                <span className="text-white text-xl">✅</span>
+              </div>
+              <h3 className="text-lg font-semibold text-white mb-2">
+                Aceptación de tutor
+              </h3>
+              <p className="text-neutral-400 text-sm">
+                Revisa y procesa las solicitudes de tutoría pendientes.
+              </p>
+              <div className="mt-4">
+                <Link to="/accept-tutor">
                   <Button variant="primary">Ir</Button>
                 </Link>
               </div>
