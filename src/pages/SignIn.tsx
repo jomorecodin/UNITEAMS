@@ -35,6 +35,7 @@ export const SignIn: React.FC = () => {
   // Redirect if already authenticated
   useEffect(() => {
     if (user) {
+      console.log('Current user:', user);
       navigate(from, { replace: true });
     }
   }, [user, navigate, from]);

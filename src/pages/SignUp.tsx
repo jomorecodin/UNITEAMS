@@ -34,8 +34,10 @@ export const SignUp: React.FC = () => {
   // Redirect if already authenticated
   useEffect(() => {
     if (user) {
+      console.log('Current user:', user);
       navigate('/dashboard');
     }
+    
   }, [user, navigate]);
 
   const validateForm = () => {

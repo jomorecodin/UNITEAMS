@@ -17,24 +17,16 @@ export const Dashboard: React.FC = () => {
       <div className="min-h-screen bg-black flex items-center justify-center">
         <div className="text-center">
           <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-white mx-auto mb-4"></div>
-          <p className="text-white">Loading your dashboard...</p>
+          <p className="text-white">Cargando tu dashboard...</p>
         </div>
       </div>
     );
   }
 
-  // ✅ CORREGIDO: Si no hay usuario después del loading inicial
   if (!user) {
     return (
       <div className="min-h-screen bg-black flex items-center justify-center">
-        <div className="text-center">
-          <p className="text-white text-lg mb-4">Please sign in to access your dashboard</p>
-          <Link to="/signin">
-            <Button variant="primary">
-              Go to Login
-            </Button>
-          </Link>
-        </div>
+        <p className="text-white">No autenticado</p>
       </div>
     );
   }
