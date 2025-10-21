@@ -2,6 +2,13 @@ import React, { createContext, useContext, useEffect, useState } from 'react';
 import type { User, Session, AuthError } from '@supabase/supabase-js';
 import { supabase } from '../lib/supabaseClient';
 
+// Helper: timeout de respaldo
+const withTimeout = <T,>(p: Promise<T>, ms = 8000): Promise<T> =>
+  Promise.race([
+    p,
+    new Promise<T>((_, reject) => setTimeout(() => reject(new Error('timeout')), ms)) as Promise<T>,
+  ]);
+
 /* eslint-disable react-refresh/only-export-components */
 
 interface UserProfile {
@@ -23,7 +30,7 @@ interface AuthContextType {
   session: Session | null;
   profile: UserProfile | null;
   loading: boolean;
-  initialLoading: boolean; // ✅ NUEVO: para carga inicial
+  initialLoading: boolean;
   error: string | null;
   signUp: (
     email: string,
@@ -31,10 +38,7 @@ interface AuthContextType {
     firstName?: string,
     lastName?: string
   ) => Promise<{ error: AuthError | null }>;
-  signIn: (
-    email: string,
-    password: string
-  ) => Promise<{ error: AuthError | null }>;
+  signIn: (email: string, password: string) => Promise<{ error: AuthError | null }>;
   signOut: () => Promise<void>;
   updateProfile: (updates: {
     firstName?: string;
@@ -50,23 +54,18 @@ const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 export const useAuth = () => {
   const context = useContext(AuthContext);
-  if (context === undefined) {
-    throw new Error('useAuth must be used within an AuthProvider');
-  }
+  if (context === undefined) throw new Error('useAuth must be used within an AuthProvider');
   return context;
 };
 
-export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
-  children,
-}) => {
+export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [user, setUser] = useState<User | null>(null);
   const [session, setSession] = useState<Session | null>(null);
   const [profile, setProfile] = useState<UserProfile | null>(null);
-  const [initialLoading, setInitialLoading] = useState(true); // ✅ NUEVO
-  const [loading, setLoading] = useState(false); // Solo para operaciones
+  const [initialLoading, setInitialLoading] = useState(true);
+  const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  // Function to fetch user profile
   const fetchUserProfile = async (userId: string) => {
     try {
       const { data, error } = await supabase
@@ -79,7 +78,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
         console.error('Error fetching profile:', error);
         return null;
       }
-
       return data as UserProfile;
     } catch (err) {
       console.error('Error fetching profile:', err);
@@ -87,13 +85,11 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
     }
   };
 
-  // Clear error function
   const clearError = () => setError(null);
 
-  // Force sign out function
   const forceSignOut = async () => {
     try {
-      await supabase.auth.signOut();
+      await withTimeout(supabase.auth.signOut(), 6000);
     } catch (err) {
       console.error('Error during force sign out:', err);
     }
@@ -104,44 +100,59 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
 
     const init = async () => {
       try {
-        const { data: { session } } = await supabase.auth.getSession();
+        setInitialLoading(true);
+        const { data: { session }, error } = await withTimeout(supabase.auth.getSession(), 8000);
+        if (!mounted) return;
+
+        if (error) {
+          console.error('Session error:', error);
+          setError(error.message);
+          setSession(null);
+          setUser(null);
+          setProfile(null);
+          return;
+        }
+
+        setSession(session);
         setUser(session?.user ?? null);
 
         if (session?.user) {
-          try {
-            const { data, error } = await supabase
-              .from('profiles')
-              .select('*')
-              .eq('id', session.user.id)
-              .single();
-
-            if (!error && active) setProfile(data ?? null);
-          } catch {
-            if (active) setProfile(null);
-          }
+          const p = await fetchUserProfile(session.user.id);
+          if (mounted) setProfile(p);
         } else {
-          if (active) setProfile(null);
+          setProfile(null);
+        }
+      } catch (err) {
+        console.error('Failed to get session:', err);
+        if (mounted) {
+          setError('Failed to get session');
+          setSession(null);
+          setUser(null);
+          setProfile(null);
         }
       } finally {
-        if (active) setInitialLoading(false); // <- clave: siempre apagar
+        if (mounted) setInitialLoading(false);
       }
     };
 
     init();
 
-    const { data: sub } = supabase.auth.onAuthStateChange(async (_event, session) => {
-      setUser(session?.user ?? null);
-      if (session?.user) {
-        const { data } = await supabase
-          .from('profiles')
-          .select('*')
-          .eq('id', session.user.id)
-          .single();
-        setProfile(data ?? null);
-      } else {
-        setProfile(null);
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (_event, session) => {
+      if (!mounted) return;
+      try {
+        setSession(session);
+        setUser(session?.user ?? null);
+
+        if (session?.user) {
+          const p = await fetchUserProfile(session.user.id);
+          if (mounted) setProfile(p);
+        } else {
+          setProfile(null);
+        }
+        setError(null);
+      } finally {
+        if (mounted) setInitialLoading(false);
       }
-      setLoading(false);
     });
 
     return () => {
@@ -150,48 +161,41 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
     };
   }, []);
 
-  const signUp = async (
-    email: string,
-    password: string,
-    firstName?: string,
-    lastName?: string
-  ) => {
+  const signUp = async (email: string, password: string, firstName?: string, lastName?: string) => {
     setLoading(true);
     setError(null);
     try {
-      // Si ya hay una sesión activa, cerrarla primero
-      if (session) {
-        await supabase.auth.signOut();
-      }
+      if (session) await withTimeout(supabase.auth.signOut(), 6000);
 
-      const { data, error } = await supabase.auth.signUp({
-        email,
-        password,
-        options: {
-          data: {
-            first_name: firstName || '',
-            last_name: lastName || '',
-            full_name: `${firstName || ''} ${lastName || ''}`.trim() || email.split('@')[0],
+      const { data, error } = await withTimeout(
+        supabase.auth.signUp({
+          email,
+          password,
+          options: {
+            data: {
+              first_name: firstName || '',
+              last_name: lastName || '',
+              full_name: `${firstName || ''} ${lastName || ''}`.trim() || email.split('@')[0],
+            },
           },
-        },
-      });
-      
+        }),
+        8000
+      );
+
       if (error) {
         setError(error.message);
         return { error };
       }
-      
-      // If signup successful and we have a user, fetch profile
+
       if (data.user) {
-        const userProfile = await fetchUserProfile(data.user.id);
-        setProfile(userProfile);
+        const p = await fetchUserProfile(data.user.id);
+        setProfile(p);
       }
-      
       return { error: null };
     } catch (err) {
-      const errorMessage = 'An unexpected error occurred during sign up';
-      setError(errorMessage);
-      return { error: { message: errorMessage } as AuthError };
+      const message = err instanceof Error ? err.message : 'An unexpected error occurred during sign up';
+      setError(message);
+      return { error: { message } as AuthError };
     } finally {
       setLoading(false);
     }
@@ -201,62 +205,51 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
     setLoading(true);
     setError(null);
     try {
-      // Si ya hay una sesión activa, cerrarla primero
       if (session && user?.email !== email) {
-        await supabase.auth.signOut();
+        await withTimeout(supabase.auth.signOut(), 6000);
       }
 
-      const { data, error } = await supabase.auth.signInWithPassword({
-        email,
-        password,
-      });
-      
+      const { data, error } = await withTimeout(
+        supabase.auth.signInWithPassword({ email, password }),
+        8000
+      );
+
       if (error) {
         setError(error.message);
         return { error };
       }
-      
-      // If signin successful, fetch profile
+
       if (data.user) {
-        const userProfile = await fetchUserProfile(data.user.id);
-        setProfile(userProfile);
+        const p = await fetchUserProfile(data.user.id);
+        setProfile(p);
       }
-      
+
       return { error: null };
     } catch (err) {
-      const errorMessage = 'An unexpected error occurred during sign in';
-      setError(errorMessage);
-      return { error: { message: errorMessage } as AuthError };
+      const msg = err instanceof Error ? err.message : 'Sign-in failed';
+      setError(msg);
+      return { error: { message: msg } as AuthError };
     } finally {
       setLoading(false);
+      setInitialLoading(false);
     }
   };
 
-const signOut = async (): Promise<void> => {
-  setLoading(true);
-  setError(null);
-  try {
-    const { error } = await supabase.auth.signOut();
-    if (error) {
-      console.error('Sign out error:', error);
-      setError(error.message);
-      throw error;
+  const signOut = async () => {
+    setLoading(true);
+    try {
+      (supabase as any).removeAllChannels?.();
+      await withTimeout(supabase.auth.signOut(), 6000);
+    } catch (err) {
+      console.error('signOut error', err);
+    } finally {
+      setUser(null);
+      setProfile(null);
+      setSession(null);
+      setLoading(false);
+      setInitialLoading(false);
     }
-    setUser(null);
-    setSession(null);
-    setProfile(null);
-  } catch (err) {
-    console.error('Error during sign out:', err);
-    const errorMessage = 'An unexpected error occurred during sign out';
-    setError(errorMessage);
-    setUser(null);
-    setSession(null);
-    setProfile(null);
-    throw err;
-  } finally {
-    setLoading(false);
-  }
-};
+  };
 
   const updateProfile = async (updates: {
     firstName?: string;
@@ -264,9 +257,7 @@ const signOut = async (): Promise<void> => {
     bio?: string;
     avatarUrl?: string;
   }) => {
-    if (!user) {
-      return { error: new Error('User not authenticated') };
-    }
+    if (!user) return { error: new Error('User not authenticated') };
 
     try {
       const { error } = await supabase.rpc('update_current_user_profile', {
@@ -276,34 +267,35 @@ const signOut = async (): Promise<void> => {
         new_avatar_url: updates.avatarUrl || null,
       });
 
-      if (error) {
-        return { error: new Error(error.message) };
-      }
+      if (error) return { error: new Error(error.message) };
 
-      // Refresh profile data
-      const updatedProfile = await fetchUserProfile(user.id);
-      setProfile(updatedProfile);
-
+      const p = await fetchUserProfile(user.id);
+      setProfile(p);
       return { error: null };
     } catch (err) {
-      return { error: new Error('Failed to update profile') };
+      const msg = err instanceof Error ? err.message : 'Update failed';
+      return { error: new Error(msg) };
     }
   };
 
-  const value = {
-    user,
-    session,
-    profile,
-    loading,
-    initialLoading,
-    error,
-    signUp,
-    signIn,
-    signOut,
-    updateProfile,
-    clearError,
-    forceSignOut,
-  };
-
-  return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
+  return (
+    <AuthContext.Provider
+      value={{
+        user,
+        session,
+        profile,
+        loading,
+        initialLoading,
+        error,
+        signUp,
+        signIn,
+        signOut,
+        updateProfile,
+        clearError,
+        forceSignOut,
+      }}
+    >
+      {children}
+    </AuthContext.Provider>
+  );
 };
