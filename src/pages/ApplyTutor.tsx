@@ -2,11 +2,12 @@ import React, { useState, useEffect } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { AuthLayout } from '../components/AuthLayout';
 import { Button } from '../components/Button';
-import { supabase } from '../lib/supabaseClient';
 import { Link, useNavigate } from 'react-router-dom';
 
+const REQUESTS_API = 'http://localhost:8080/api/requests'; // <- POST protegido
+
 export const ApplyTutor: React.FC = () => {
-  const { user } = useAuth();
+  const { user, session } = useAuth(); // <- usa el token del contexto
   const navigate = useNavigate();
 
   const [subjectName, setSubjectName] = useState('');
@@ -16,21 +17,78 @@ export const ApplyTutor: React.FC = () => {
   const [errors, setErrors] = useState<{ [key: string]: string }>({});
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [message, setMessage] = useState('');
-  const [subjects, setSubjects] = useState<{ id_subject: number; name: string }[]>([]);
+  const [subjects, setSubjects] = useState<{ id_subject: number | string; name: string }[]>([]);
   const [loadingSubjects, setLoadingSubjects] = useState(true);
 
+  // Cargar materias desde el backend (no desde Supabase)
   useEffect(() => {
     let isMounted = true;
+    const controller = new AbortController();
+
     const fetchSubjects = async () => {
       setLoadingSubjects(true);
-      const { data, error } = await supabase.from('subjects').select('id_subject, name');
-      if (isMounted) {
-        setSubjects(data || []);
-        setLoadingSubjects(false);
+      try {
+        const urls = [
+          'http://localhost:8080/api/subjects/public', // <- principal
+          'http://localhost:8080/api/subjects?size=100',
+          'http://localhost:8080/api/subjects',
+        ];
+
+        let loaded: { id_subject: number | string; name: string }[] = [];
+
+        for (const url of urls) {
+          const res = await fetch(url, {
+            method: 'GET',
+            headers: { Accept: 'application/json' }, // sin Authorization para evitar 401 en público
+            signal: controller.signal,
+          });
+
+          if (!res.ok) continue;
+
+          let json: any;
+          try {
+            json = await res.json();
+          } catch {
+            const text = await res.text();
+            json = text ? JSON.parse(text) : [];
+          }
+
+          const raw =
+            (Array.isArray(json) && json) ||
+            json?.data ||
+            json?.content ||
+            json?.items ||
+            json?.results ||
+            json?.rows ||
+            json?.list ||
+            [];
+
+          loaded = (Array.isArray(raw) ? raw : [])
+            .map((s: any) => ({
+              id_subject:
+                s.id_subject ?? s.subject_id ?? s.idSubject ?? s.subjectId ?? s.id,
+              name: s.name ?? s.subject_name ?? s.subjectName ?? s.nombre ?? s.title,
+            }))
+            .filter((s) => s.id_subject != null && String(s.name || '').trim() !== '')
+            .sort((a, b) => String(a.name).localeCompare(String(b.name)));
+
+          if (loaded.length) break;
+        }
+
+        if (isMounted) setSubjects(loaded);
+      } catch (err) {
+        if ((err as any)?.name !== 'AbortError') console.error('Error cargando materias:', err);
+        if (isMounted) setSubjects([]);
+      } finally {
+        if (isMounted) setLoadingSubjects(false);
       }
     };
+
     fetchSubjects();
-    return () => { isMounted = false; };
+    return () => {
+      isMounted = false;
+      controller.abort();
+    };
   }, []);
 
   const validateForm = () => {
@@ -50,36 +108,52 @@ export const ApplyTutor: React.FC = () => {
     setIsSubmitting(true);
 
     try {
-      const requestObj = {
-        id_user: user?.id,
-        id_subject: Number(subjectName),
+      const token =
+        session?.access_token || localStorage.getItem('accessToken') || '';
+
+      if (!token || !user?.id) {
+        setMessage('No hay sesión válida. Inicia sesión nuevamente.');
+        return;
+      }
+
+      // DTO que espera tu controller (camelCase)
+      const requestDto = {
+        idUser: user.id,
+        idSubject: Number(subjectName),
         grade: Number(grade),
-        carreer_name: carreerName.trim(),
+        carreerName: carreerName.trim(),
         description: description.trim(),
       };
 
-      console.log('Objeto a enviar:', requestObj);
+      const res = await fetch(REQUESTS_API, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Accept: 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify(requestDto),
+      });
 
-      const { error, data } = await supabase.from('requests').insert([requestObj]);
-      console.log('Respuesta de Supabase:', { error, data });
-
-      if (error) {
-        setMessage('Error al enviar la solicitud: ' + error.message);
-      } else {
-        setMessage('¡Solicitud enviada correctamente!');
-        setSubjectName('');
-        setGrade('');
-        setCarreerName('');
-        setDescription('');
-        setTimeout(() => {
-          navigate('/dashboard');
-        }, 1000);
+      if (!res.ok) {
+        const errText = await res.text().catch(() => '');
+        setMessage(errText || `No se pudo enviar la solicitud. (${res.status})`);
+        return;
       }
+
+      // opcional: const created = await res.json().catch(() => null);
+      setMessage('¡Solicitud enviada correctamente!');
+      setSubjectName('');
+      setGrade('');
+      setCarreerName('');
+      setDescription('');
+      setTimeout(() => navigate('/dashboard'), 1000);
     } catch (err) {
-      console.error('Error inesperado:', err);
-      setMessage('Error inesperado: ' + (err as Error).message);
+      console.error('Error al enviar solicitud:', err);
+      setMessage('Error al enviar la solicitud.');
+    } finally {
+      setIsSubmitting(false);
     }
-    setIsSubmitting(false);
   };
 
   return (
@@ -104,11 +178,13 @@ export const ApplyTutor: React.FC = () => {
             >
               {loadingSubjects ? (
                 <option>Cargando materias...</option>
+              ) : subjects.length === 0 ? (
+                <option value="">No hay materias disponibles</option>
               ) : (
                 <>
                   <option value="">Selecciona una materia</option>
                   {subjects.map(subject => (
-                    <option key={subject.id_subject} value={subject.id_subject}>
+                    <option key={String(subject.id_subject)} value={String(subject.id_subject)}>
                       {subject.name}
                     </option>
                   ))}

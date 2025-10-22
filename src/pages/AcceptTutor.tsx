@@ -1,8 +1,9 @@
 import React, { useEffect, useState } from 'react';
-import { supabase } from '../lib/supabaseClient';
 import { Card } from '../components/Card';
 import { Button } from '../components/Button';
 import { Link } from 'react-router-dom';
+import { useAuth } from '../context/AuthContext';
+import { supabase } from '../lib/supabaseClient';
 
 type RequestRow = {
   id_request: number;
@@ -13,68 +14,129 @@ type RequestRow = {
   description: string | null;
 };
 
+const REQUESTS_PUBLIC_API = 'http://localhost:8080/api/requests/public';
+const REQUESTS_API = 'http://localhost:8080/api/requests';
+const SUBJECTS_PUBLIC_API = 'http://localhost:8080/api/subjects/public';
+const TUTORS_API = 'http://localhost:8080/api/tutors'; // POST: crea tutor {idUser(uuid), idSubject(int)}
+
 const AcceptTutor: React.FC = () => {
+  const { session } = useAuth();
   const [requests, setRequests] = useState<RequestRow[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
   const [processingId, setProcessingId] = useState<number | null>(null);
   const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
-  const [profilesMap, setProfilesMap] = useState<Record<string, string>>({}); // id_user -> display name
-  const [subjectsMap, setSubjectsMap] = useState<Record<number, string>>({}); // id_subject -> name
+  const [subjectsMap, setSubjectsMap] = useState<Record<number, string>>({});
+  // Mapa de nombres de usuario consultados en Supabase por id_user
+  const [userNames, setUserNames] = useState<Record<string, string>>({});
+
+  const mapRequest = (r: any): RequestRow | null => {
+    const id_request = r.id_request ?? r.idRequest ?? r.id;
+    const id_user = r.id_user ?? r.idUser ?? r.userId;
+    const id_subject = r.id_subject ?? r.idSubject ?? r.subjectId;
+    if (id_request == null || id_user == null || id_subject == null) return null;
+    return {
+      id_request: Number(id_request),
+      id_user: String(id_user),
+      id_subject: Number(id_subject),
+      grade: r.grade != null ? Number(r.grade) : null,
+      carreer_name: r.carreer_name ?? r.careerName ?? null,
+      description: r.description ?? null,
+    };
+  };
+
+  // Type guard
+  const isRequestRow = (x: RequestRow | null): x is RequestRow => x !== null;
+
+  const fetchSubjectsMap = async () => {
+    try {
+      const res = await fetch(SUBJECTS_PUBLIC_API, { headers: { Accept: 'application/json' } });
+      if (!res.ok) return;
+      const json = await res.json().catch(() => []);
+      const list = (Array.isArray(json) ? json : (json?.data || json?.content || [])) as any[];
+      const map: Record<number, string> = {};
+      list.forEach((s: any) => {
+        const id = s.id_subject ?? s.subject_id ?? s.idSubject ?? s.subjectId ?? s.id;
+        const name = s.name ?? s.subject_name ?? s.subjectName ?? s.nombre;
+        if (id != null && name) map[Number(id)] = String(name);
+      });
+      setSubjectsMap(map);
+    } catch (e) {
+      console.error('Error cargando materias:', e);
+      setSubjectsMap({});
+    }
+  };
+
+  // Obtiene nombres desde Supabase por lote usando user_profiles (fallback a profiles)
+  const fetchUserNames = async (ids: string[]) => {
+    const missing = Array.from(new Set(ids)).filter((id) => !userNames[id]);
+    if (missing.length === 0) return;
+
+    const toDisplayName = (row: any) => {
+      const base =
+        row.display_name ??
+        row.full_name ??
+        row.fullName ??
+        `${row.first_name ?? ''} ${row.last_name ?? ''}`.trim();
+      return (base && String(base).trim()) || (row.email ? String(row.email) : '');
+    };
+
+    const loadFromTable = async (table: string) => {
+      const { data, error } = await supabase
+        .from(table)
+        .select('id, first_name, last_name, full_name, display_name, email')
+        .in('id', missing);
+
+      if (error) return {} as Record<string, string>;
+      const map: Record<string, string> = {};
+      (data || []).forEach((row: any) => {
+        const name = toDisplayName(row);
+        if (row.id && name) map[String(row.id)] = name;
+      });
+      return map;
+    };
+
+    // Intenta en user_profiles y luego profiles
+    const fromUserProfiles = await loadFromTable('user_profiles');
+    let combined = { ...fromUserProfiles };
+
+    const remaining = missing.filter((id) => !combined[id]);
+    if (remaining.length) {
+      const { data, error } = await supabase
+        .from('profiles')
+        .select('id, first_name, last_name, full_name, display_name, email')
+        .in('id', remaining);
+
+      if (!error && data) {
+        data.forEach((row: any) => {
+          const base =
+            row.display_name ??
+            row.full_name ??
+            `${row.first_name ?? ''} ${row.last_name ?? ''}`.trim();
+          const name = (base && String(base)) || (row.email ? String(row.email) : '');
+          if (row.id && name) combined[String(row.id)] = String(name);
+        });
+      }
+    }
+
+    if (Object.keys(combined).length) {
+      setUserNames((prev) => ({ ...prev, ...combined }));
+    }
+  };
 
   const fetchRequests = async () => {
     setLoading(true);
     setMessage(null);
     try {
-      const { data: reqData, error: reqErr } = await supabase
-        .from('requests')
-        .select('*')
-        .order('id_request', { ascending: false });
-
-      if (reqErr) throw reqErr;
-      const rows: RequestRow[] = reqData || [];
+      const res = await fetch(REQUESTS_PUBLIC_API, { headers: { Accept: 'application/json' } });
+      if (!res.ok) throw new Error(`GET /requests/public -> ${res.status}`);
+      const json = await res.json().catch(() => []);
+      const raw = Array.isArray(json) ? json : (json?.data || json?.content || []);
+      const rows: RequestRow[] = raw.map(mapRequest).filter(isRequestRow);
       setRequests(rows);
 
-      // Cargar perfiles en batch para mostrar nombres
-      const userIds = Array.from(new Set(rows.map(r => r.id_user))).filter(Boolean);
-      if (userIds.length > 0) {
-        const { data: profiles, error: profErr } = await supabase
-          .from('profiles')
-          .select('id, display_name, first_name, last_name')
-          .in('id', userIds);
-
-        if (!profErr && profiles) {
-          const map: Record<string, string> = {};
-          profiles.forEach((p: any) => {
-            const name =
-              (p.display_name && p.display_name.trim()) ||
-              ([p.first_name, p.last_name].filter(Boolean).join(' ').trim()) ||
-              p.id;
-            map[p.id] = name;
-          });
-          setProfilesMap(map);
-        }
-      } else {
-        setProfilesMap({});
-      }
-
-      // Cargar materias (subjects) en batch para mostrar nombre de materia
-      const subjectIds = Array.from(new Set(rows.map(r => r.id_subject))).filter(Boolean);
-      if (subjectIds.length > 0) {
-        const { data: subs, error: subErr } = await supabase
-          .from('subjects')
-          .select('id_subject, name')
-          .in('id_subject', subjectIds);
-
-        if (!subErr && subs) {
-          const smap: Record<number, string> = {};
-          subs.forEach((s: any) => {
-            smap[s.id_subject] = s.name;
-          });
-          setSubjectsMap(smap);
-        }
-      } else {
-        setSubjectsMap({});
-      }
+      // cargar nombres por id_user desde Supabase
+      const ids = rows.map((r) => r.id_user);
+      fetchUserNames(ids); // no await: no bloquea la UI
     } catch (err) {
       setMessage({ type: 'error', text: 'Error cargando solicitudes.' });
       console.error(err);
@@ -84,74 +146,84 @@ const AcceptTutor: React.FC = () => {
   };
 
   useEffect(() => {
+    fetchSubjectsMap();
     fetchRequests();
-    // Suscripción opcional a cambios en la tabla requests
-    const subscription = supabase
-      .channel('public:requests')
-      .on(
-        'postgres_changes',
-        { event: '*', schema: 'public', table: 'requests' },
-        () => {
-          fetchRequests();
-        }
-      )
-      .subscribe();
-
-    return () => {
-      supabase.removeChannel(subscription);
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // Util: extrae el sub (uuid) del JWT
+  const getUserIdFromToken = (token: string): string | null => {
+    try {
+      const [, payload] = token.split('.');
+      if (!payload) return null;
+      const json = JSON.parse(atob(payload.replace(/-/g, '+').replace(/_/g, '/')));
+      return typeof json?.sub === 'string' ? json.sub : null;
+    } catch {
+      return null;
+    }
+  };
+
+  // POST /api/tutors con el DTO que espera el backend { idUser, idSubject }
+  const createTutorBackend = async (
+    token: string,
+    payload: { idUser: string; idSubject: number }
+  ) => {
+    const res = await fetch(TUTORS_API, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Accept: 'application/json',
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify({
+        idUser: payload.idUser,
+        idSubject: payload.idSubject,
+      }),
+    });
+
+    if (res.ok) return res.json().catch(() => null);
+
+    const text = await res.text().catch(() => '');
+    const err: any = new Error(text || `POST /tutors -> ${res.status}`);
+    err.status = res.status;
+    throw err;
+  };
 
   const acceptRequest = async (r: RequestRow) => {
     setProcessingId(r.id_request);
     setMessage(null);
-
     try {
-      // Obtener nombre del usuario (si no lo tenemos)
-      let nameTutor = profilesMap[r.id_user];
-      if (!nameTutor) {
-        const { data: prof, error: profErr } = await supabase
-          .from('profiles')
-          .select('display_name, first_name, last_name')
-          .eq('id', r.id_user)
-          .single();
+      const token = session?.access_token || localStorage.getItem('accessToken') || '';
+      if (!token) throw new Error('Sesión inválida');
 
-        if (!profErr && prof) {
-          nameTutor =
-            (prof.display_name && prof.display_name.trim()) ||
-            ([prof.first_name, prof.last_name].filter(Boolean).join(' ').trim()) ||
-            r.id_user;
-        } else {
-          nameTutor = r.id_user;
-        }
+      // El backend valida que idUser == sub del token; usa el del token.
+      const idFromToken = getUserIdFromToken(token);
+      if (!idFromToken) throw new Error('Token inválido: no se pudo leer el usuario');
+
+      // 1) Crear tutor en backend (solo idUser + idSubject)
+      await createTutorBackend(token, {
+        idUser: idFromToken,
+        idSubject: r.id_subject,
+      });
+
+      // 2) Eliminar la solicitud
+      const delRes = await fetch(`${REQUESTS_API}/${r.id_request}`, {
+        method: 'DELETE',
+        headers: { Accept: 'application/json', Authorization: `Bearer ${token}` },
+      });
+      if (!delRes.ok) {
+        const text = await delRes.text().catch(() => '');
+        throw new Error(text || `Error al eliminar solicitud (${delRes.status})`);
       }
 
-      // Insertar en tutors
-      const { error: insertErr } = await supabase.from('tutors').insert([
-        {
-          id_subject: r.id_subject,
-          id_user: r.id_user,
-          name_tutor: nameTutor,
-        },
-      ]);
-
-      if (insertErr) throw insertErr;
-
-      // Eliminar la solicitud (o actualizar estado según tu diseño)
-      const { error: delErr } = await supabase
-        .from('requests')
-        .delete()
-        .eq('id_request', r.id_request);
-
-      if (delErr) throw delErr;
-
-      setMessage({ type: 'success', text: 'Solicitud aceptada y tutor creado.' });
-      // actualizar lista localmente
-      setRequests(prev => prev.filter(item => item.id_request !== r.id_request));
-    } catch (err) {
-      console.error(err);
-      setMessage({ type: 'error', text: 'Error al aceptar la solicitud.' });
+      setMessage({ type: 'success', text: 'Solicitud aceptada. Tutor creado.' });
+      setRequests((prev) => prev.filter((item) => item.id_request !== r.id_request));
+    } catch (err: any) {
+      if (err?.status === 409) {
+        setMessage({ type: 'error', text: 'El tutor ya existe para esa materia.' });
+      } else {
+        console.error(err);
+        setMessage({ type: 'error', text: err?.message || 'Error al aceptar la solicitud.' });
+      }
     } finally {
       setProcessingId(null);
     }
@@ -161,15 +233,20 @@ const AcceptTutor: React.FC = () => {
     setProcessingId(r.id_request);
     setMessage(null);
     try {
-      const { error: delErr } = await supabase
-        .from('requests')
-        .delete()
-        .eq('id_request', r.id_request);
+      const token = session?.access_token || localStorage.getItem('accessToken') || '';
+      if (!token) throw new Error('Sesión inválida');
 
-      if (delErr) throw delErr;
+      const delRes = await fetch(`${REQUESTS_API}/${r.id_request}`, {
+        method: 'DELETE',
+        headers: { Accept: 'application/json', Authorization: `Bearer ${token}` },
+      });
+      if (!delRes.ok) {
+        const text = await delRes.text().catch(() => '');
+        throw new Error(text || `Error al declinar (${delRes.status})`);
+      }
 
       setMessage({ type: 'success', text: 'Solicitud declinada.' });
-      setRequests(prev => prev.filter(item => item.id_request !== r.id_request));
+      setRequests((prev) => prev.filter((item) => item.id_request !== r.id_request));
     } catch (err) {
       console.error(err);
       setMessage({ type: 'error', text: 'Error al declinar la solicitud.' });
@@ -213,11 +290,11 @@ const AcceptTutor: React.FC = () => {
               </tr>
             )}
 
-            {requests.map(r => (
+            {requests.map((r: RequestRow) => (   // <- tipar 'r' para evitar any
               <tr key={r.id_request} className="border-b border-neutral-800">
                 <td className="py-2 px-3 text-sm text-neutral-300">{r.id_request}</td>
                 <td className="py-2 px-3 text-sm text-neutral-200">
-                  {profilesMap[r.id_user] || r.id_user}
+                  {userNames[r.id_user] || (loading ? 'Cargando...' : '-')}
                 </td>
                 <td className="py-2 px-3 text-sm text-neutral-200">
                   {subjectsMap[r.id_subject] ?? `#${r.id_subject}`}
@@ -250,6 +327,7 @@ const AcceptTutor: React.FC = () => {
           </tbody>
         </table>
       </div>
+
       <div className="text-center mt-12">
         <Link to="/dashboard">
           <Button variant="secondary">Volver al Dashboard</Button>

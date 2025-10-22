@@ -102,7 +102,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       try {
         setInitialLoading(true);
         const { data: { session }, error } = await withTimeout(supabase.auth.getSession(), 8000);
-        if (!mounted) return;
+        if (!active) return;
 
         if (error) {
           console.error('Session error:', error);
@@ -118,46 +118,46 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
         if (session?.user) {
           const p = await fetchUserProfile(session.user.id);
-          if (mounted) setProfile(p);
+          if (active) setProfile(p);
         } else {
           setProfile(null);
         }
       } catch (err) {
         console.error('Failed to get session:', err);
-        if (mounted) {
+        if (active) {
           setError('Failed to get session');
           setSession(null);
           setUser(null);
           setProfile(null);
         }
       } finally {
-        if (mounted) setInitialLoading(false);
+        if (active) setInitialLoading(false);
       }
     };
 
     init();
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange(async (_event, session) => {
-      if (!mounted) return;
+      if (!active) return;
       try {
         setSession(session);
         setUser(session?.user ?? null);
 
         if (session?.user) {
           const p = await fetchUserProfile(session.user.id);
-          if (mounted) setProfile(p);
+          if (active) setProfile(p);
         } else {
           setProfile(null);
         }
         setError(null);
       } finally {
-        if (mounted) setInitialLoading(false);
+        if (active) setInitialLoading(false);
       }
     });
 
     return () => {
       active = false;
-      sub.subscription.unsubscribe();
+      subscription.unsubscribe();
     };
   }, []);
 
