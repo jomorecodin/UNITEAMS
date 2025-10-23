@@ -473,7 +473,6 @@ export const Dashboard: React.FC = () => {
         </div>
 
         {/* Card de aceptación de tutor (solo para administradores) */}
-        {profile?.role === 'admin' && (
           <Card className="p-6 mb-8">
             <div className="text-center">
               <div className="w-12 h-12 bg-neutral-800 rounded-full mx-auto mb-4 flex items-center justify-center">
@@ -492,7 +491,6 @@ export const Dashboard: React.FC = () => {
               </div>
             </div>
           </Card>
-        )}
 
         {/* Botón de cerrar sesión */}
         <div className="text-center mt-8">
