@@ -8,12 +8,23 @@ interface CreateGroupPage {
   name: string; // ✅ NUEVO: Campo para el nombre del grupo
   subject: string;
   sessionType: 'seguimiento' | 'examen';
-  date: string;
+  meetingDay: string;
+  meetingDate: string;
   time: string;
   description: string;
   maxParticipants?: number;
   isPrivate: boolean;
 }
+
+const WEEK_DAYS = [
+  'Lunes',
+  'Martes', 
+  'Miércoles',
+  'Jueves',
+  'Viernes',
+  'Sábado',
+  'Domingo'
+];
 
 // ✅ LISTA DE MATERIAS PREDEFINIDAS
 const SUBJECTS = [
@@ -45,7 +56,8 @@ export const CreateGroupPage: React.FC = () => {
     name: '', // ✅ NUEVO: Nombre del grupo
     subject: '',
     sessionType: 'seguimiento',
-    date: '',
+    meetingDay: '',
+    meetingDate: '',
     time: '',
     description: '',
     maxParticipants: 10,
@@ -106,15 +118,22 @@ export const CreateGroupPage: React.FC = () => {
       newErrors.subject = 'La materia es requerida';
     }
 
-    if (!formData.date) {
-      newErrors.date = 'La fecha es requerida';
+    if (formData.sessionType === 'examen') {
+      if (!formData.meetingDate) {
+        newErrors.meetingDate = 'La fecha del examen es requerida';
+      } else {
+        const selectedDate = new Date(formData.meetingDate);
+        const today = new Date();
+        today.setHours(0, 0, 0, 0);
+        
+        if (selectedDate < today) {
+          newErrors.meetingDate = 'La fecha no puede ser en el pasado';
+        }
+      }
     } else {
-      const selectedDate = new Date(formData.date);
-      const today = new Date();
-      today.setHours(0, 0, 0, 0);
-      
-      if (selectedDate < today) {
-        newErrors.date = 'La fecha no puede ser en el pasado';
+      // Validación para seguimiento
+      if (!formData.meetingDay) {
+        newErrors.meetingDay = 'El día de la semana es requerido';
       }
     }
 
@@ -153,7 +172,7 @@ export const CreateGroupPage: React.FC = () => {
   };
 
   // ✅ FUNCIÓN ACTUALIZADA
-  const handleSubmit = async (e: React.FormEvent) => {
+    const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
     if (!validateForm()) {
@@ -182,27 +201,32 @@ export const CreateGroupPage: React.FC = () => {
 
       console.log('✅ Token encontrado:', accessToken.substring(0, 20) + '...');
 
-      // ✅ GENERAR CÓDIGO EN EL FRONTEND
       const generateCode = () => {
         return Math.random().toString(36).substring(2, 10).toUpperCase();
       };
 
-      // ✅ PREPARAR DATOS COMPLETOS (SIN generar nombre automático)
-      const requestData = {
-        name: formData.name, // ✅ USAR el nombre ingresado por el usuario
+      // ✅ PREPARAR DATOS CON NUEVA ESTRUCTURA
+      const requestData: any = {
+        name: formData.name,
         subject: formData.subject,
-        sessionType: formData.sessionType, // ✅ Ya en minúsculas
-        meetingDate: formData.date,
+        sessionType: formData.sessionType,
         meetingTime: formData.time + ':00',
         description: formData.description,
         maxParticipants: formData.maxParticipants,
         isPrivate: formData.isPrivate,
-        tutorName: user?.user_metadata?.full_name || user?.email || 'Por asignar',
+        tutorName: null, // ✅ Forzado a null
         joinLink: null,
         code: generateCode(),
         createdBy: user?.id,
         currentParticipants: 1
       };
+
+      // ✅ AGREGAR CAMPOS SEGÚN EL TIPO DE SESIÓN
+      if (formData.sessionType === 'examen') {
+        requestData.meetingDate = formData.meetingDate;
+      } else {
+        requestData.meetingDay = formData.meetingDay;
+      }
 
       console.log('📤 Enviando datos al backend:', requestData);
 
@@ -222,11 +246,8 @@ export const CreateGroupPage: React.FC = () => {
 
       const createdGroup = await response.json();
       
-      // ✅ ÉXITO - Redirigir al dashboard inmediatamente
       alert(`¡Grupo de estudio ${formData.isPrivate ? 'privado' : 'público'} creado exitosamente!\nCódigo del grupo: ${createdGroup.code}`);
-      
-      // ✅ REDIRIGIR AL DASHBOARD
-      window.location.href = '/dashboard'; // Cambia esta ruta según tu app
+      window.location.href = '/dashboard';
       
     } catch (error: any) {
       console.error('❌ Error al crear el grupo:', error);
@@ -238,311 +259,349 @@ export const CreateGroupPage: React.FC = () => {
     setIsSubmitting(false);
   };
 
-  return (
-    <div className="min-h-screen bg-black px-4 sm:px-6 lg:px-8" style={{ paddingTop: '5rem', paddingBottom: '3rem' }}>
-      <div className="max-w-2xl mx-auto">
-        <div className="text-center mb-8">
-          <h1 className="text-3xl font-bold text-white mb-4">
-            Crear Grupo de Estudio
-          </h1>
-          <p className="text-neutral-400">
-            Organiza una sesión de estudio colaborativa con tus compañeros
-          </p>
-        </div>
+return (
+  <div className="min-h-screen bg-black px-4 sm:px-6 lg:px-8" style={{ paddingTop: '5rem', paddingBottom: '3rem' }}>
+    <div className="max-w-2xl mx-auto">
+      <div className="text-center mb-8">
+        <h1 className="text-3xl font-bold text-white mb-4">
+          Crear Grupo de Estudio
+        </h1>
+        <p className="text-neutral-400">
+          Organiza una sesión de estudio colaborativa con tus compañeros
+        </p>
+      </div>
 
-        <Card className="p-6">
-          <form onSubmit={handleSubmit} className="space-y-6">
-            {/* ✅ NUEVO: Nombre del Grupo */}
+      <Card className="p-6">
+        <form onSubmit={handleSubmit} className="space-y-6">
+          {/* ✅ NUEVO: Nombre del Grupo */}
+          <Input
+            label="Nombre del Grupo"
+            value={formData.name}
+            onChange={(e) => handleInputChange('name', e.target.value)}
+            error={errors.name}
+            placeholder="Ej: Grupo de Estudio de Cálculo, Preparación para Examen Final..."
+            icon={<BookIcon />}
+            autoComplete="off"
+            required
+            helpText="Un nombre descriptivo para tu grupo de estudio"
+          />
+
+          {/* ✅ ACTUALIZADO: Select de Materias */}
+          <div>
+            <label htmlFor="subject" className="block text-sm font-medium text-white mb-2">
+              Materia
+            </label>
+            <div className="relative">
+              <select
+                id="subject"
+                value={formData.subject}
+                onChange={(e) => handleInputChange('subject', e.target.value)}
+                className={`w-full px-4 py-3 bg-neutral-900 border-2 rounded-lg text-white placeholder-neutral-500 focus:outline-none focus:ring-2 focus:ring-red-500 focus:border-red-500 transition-all duration-200 appearance-none ${
+                  errors.subject ? 'border-red-500' : 'border-neutral-700'
+                }`}
+                required
+              >
+                <option value="">Selecciona una materia</option>
+                {SUBJECTS.map((subject) => (
+                  <option key={subject} value={subject}>
+                    {subject}
+                  </option>
+                ))}
+                <option value="otro">Otra materia...</option>
+              </select>
+              <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center px-2 text-neutral-400">
+                <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                </svg>
+              </div>
+            </div>
+            {errors.subject && (
+              <p className="mt-1 text-sm text-red-400">{errors.subject}</p>
+            )}
+          </div>
+
+          {/* ✅ MOSTRAR INPUT PARA OTRA MATERIA SI SE SELECCIONA "OTRO" */}
+          {formData.subject === 'otro' && (
             <Input
-              label="Nombre del Grupo"
-              value={formData.name}
-              onChange={(e) => handleInputChange('name', e.target.value)}
-              error={errors.name}
-              placeholder="Ej: Grupo de Estudio de Cálculo, Preparación para Examen Final..."
+              label="Especifica la materia"
+              value={formData.subject}
+              onChange={(e) => handleInputChange('subject', e.target.value)}
+              placeholder="Ingresa el nombre de la materia..."
               icon={<BookIcon />}
               autoComplete="off"
               required
-              helpText="Un nombre descriptivo para tu grupo de estudio"
             />
+          )}
 
-            {/* ✅ ACTUALIZADO: Select de Materias */}
-            <div>
-              <label htmlFor="subject" className="block text-sm font-medium text-white mb-2">
-                Materia
-              </label>
-              <div className="relative">
-                <select
-                  id="subject"
-                  value={formData.subject}
-                  onChange={(e) => handleInputChange('subject', e.target.value)}
-                  className={`w-full px-4 py-3 bg-neutral-900 border-2 rounded-lg text-white placeholder-neutral-500 focus:outline-none focus:ring-2 focus:ring-red-500 focus:border-red-500 transition-all duration-200 appearance-none ${
-                    errors.subject ? 'border-red-500' : 'border-neutral-700'
-                  }`}
-                  required
-                >
-                  <option value="">Selecciona una materia</option>
-                  {SUBJECTS.map((subject) => (
-                    <option key={subject} value={subject}>
-                      {subject}
-                    </option>
-                  ))}
-                  <option value="otro">Otra materia...</option>
-                </select>
-                <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center px-2 text-neutral-400">
-                  <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-                  </svg>
+          {/* Tipo de Sesión (se mantiene igual) */}
+          <div>
+            <label className="block text-sm font-medium text-white mb-3">
+              Tipo de Sesión
+            </label>
+            <div className="grid grid-cols-2 gap-4">
+              <button
+                type="button"
+                onClick={() => handleInputChange('sessionType', 'seguimiento')}
+                className={`p-4 border-2 rounded-lg text-center transition-all duration-200 ${
+                  formData.sessionType === 'seguimiento'
+                    ? 'border-red-500 bg-red-500/10 text-white'
+                    : 'border-neutral-700 bg-neutral-800 text-neutral-400 hover:border-neutral-600'
+                }`}
+              >
+                <div className="w-8 h-8 mx-auto mb-2 flex items-center justify-center">
+                  <span className="text-lg">📚</span>
                 </div>
-              </div>
-              {errors.subject && (
-                <p className="mt-1 text-sm text-red-400">{errors.subject}</p>
-              )}
-            </div>
+                <span className="font-medium">Seguimiento</span>
+                <p className="text-xs mt-1">Estudio continuo</p>
+              </button>
 
-            {/* ✅ MOSTRAR INPUT PARA OTRA MATERIA SI SE SELECCIONA "OTRO" */}
-            {formData.subject === 'otro' && (
+              <button
+                type="button"
+                onClick={() => handleInputChange('sessionType', 'examen')}
+                className={`p-4 border-2 rounded-lg text-center transition-all duration-200 ${
+                  formData.sessionType === 'examen'
+                    ? 'border-red-500 bg-red-500/10 text-white'
+                    : 'border-neutral-700 bg-neutral-800 text-neutral-400 hover:border-neutral-600'
+                }`}
+              >
+                <div className="w-8 h-8 mx-auto mb-2 flex items-center justify-center">
+                  <span className="text-lg">📝</span>
+                </div>
+                <span className="font-medium">Preparación Examen</span>
+                <p className="text-xs mt-1">Enfoque en evaluación</p>
+              </button>
+            </div>
+          </div>
+
+          {/* Visibilidad del Grupo (se mantiene igual) */}
+          <div>
+            <label className="block text-sm font-medium text-white mb-3">
+              Visibilidad del Grupo
+            </label>
+            <div className="grid grid-cols-2 gap-4">
+              <button
+                type="button"
+                onClick={() => handleInputChange('isPrivate', false)}
+                className={`p-4 border-2 rounded-lg text-center transition-all duration-200 ${
+                  !formData.isPrivate
+                    ? 'border-green-500 bg-green-500/10 text-white'
+                    : 'border-neutral-700 bg-neutral-800 text-neutral-400 hover:border-neutral-600'
+                }`}
+              >
+                <div className="w-8 h-8 mx-auto mb-2 flex items-center justify-center">
+                  <GlobeIcon />
+                </div>
+                <span className="font-medium">Público</span>
+                <p className="text-xs mt-1">Cualquiera puede unirse</p>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => handleInputChange('isPrivate', true)}
+                className={`p-4 border-2 rounded-lg text-center transition-all duration-200 ${
+                  formData.isPrivate
+                    ? 'border-purple-500 bg-purple-500/10 text-white'
+                    : 'border-neutral-700 bg-neutral-800 text-neutral-400 hover:border-neutral-600'
+                }`}
+              >
+                <div className="w-8 h-8 mx-auto mb-2 flex items-center justify-center">
+                  <LockIcon />
+                </div>
+                <span className="font-medium">Privado</span>
+                <p className="text-xs mt-1">Solo con invitación</p>
+              </button>
+            </div>
+            <p className="mt-2 text-sm text-neutral-400">
+              {formData.isPrivate 
+                ? '🔒 Los grupos privados requieren invitación para unirse' 
+                : '🌍 Los grupos públicos son visibles para todos los estudiantes'
+              }
+            </p>
+          </div>
+
+          {/* ✅ ACTUALIZADO: Fecha/Día y Hora - CAMBIO PRINCIPAL */}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            {/* Campo dinámico según el tipo de sesión */}
+            {formData.sessionType === 'examen' ? (
               <Input
-                label="Especifica la materia"
-                value={formData.subject}
-                onChange={(e) => handleInputChange('subject', e.target.value)}
-                placeholder="Ingresa el nombre de la materia..."
-                icon={<BookIcon />}
-                autoComplete="off"
-                required
-              />
-            )}
-
-            {/* Tipo de Sesión (se mantiene igual) */}
-            <div>
-              <label className="block text-sm font-medium text-white mb-3">
-                Tipo de Sesión
-              </label>
-              <div className="grid grid-cols-2 gap-4">
-                <button
-                  type="button"
-                  onClick={() => handleInputChange('sessionType', 'seguimiento')}
-                  className={`p-4 border-2 rounded-lg text-center transition-all duration-200 ${
-                    formData.sessionType === 'seguimiento'
-                      ? 'border-red-500 bg-red-500/10 text-white'
-                      : 'border-neutral-700 bg-neutral-800 text-neutral-400 hover:border-neutral-600'
-                  }`}
-                >
-                  <div className="w-8 h-8 mx-auto mb-2 flex items-center justify-center">
-                    <span className="text-lg">📚</span>
-                  </div>
-                  <span className="font-medium">Seguimiento</span>
-                  <p className="text-xs mt-1">Estudio continuo</p>
-                </button>
-
-                <button
-                  type="button"
-                  onClick={() => handleInputChange('sessionType', 'examen')}
-                  className={`p-4 border-2 rounded-lg text-center transition-all duration-200 ${
-                    formData.sessionType === 'examen'
-                      ? 'border-red-500 bg-red-500/10 text-white'
-                      : 'border-neutral-700 bg-neutral-800 text-neutral-400 hover:border-neutral-600'
-                  }`}
-                >
-                  <div className="w-8 h-8 mx-auto mb-2 flex items-center justify-center">
-                    <span className="text-lg">📝</span>
-                  </div>
-                  <span className="font-medium">Preparación Examen</span>
-                  <p className="text-xs mt-1">Enfoque en evaluación</p>
-                </button>
-              </div>
-            </div>
-
-            {/* Visibilidad del Grupo (se mantiene igual) */}
-            <div>
-              <label className="block text-sm font-medium text-white mb-3">
-                Visibilidad del Grupo
-              </label>
-              <div className="grid grid-cols-2 gap-4">
-                <button
-                  type="button"
-                  onClick={() => handleInputChange('isPrivate', false)}
-                  className={`p-4 border-2 rounded-lg text-center transition-all duration-200 ${
-                    !formData.isPrivate
-                      ? 'border-green-500 bg-green-500/10 text-white'
-                      : 'border-neutral-700 bg-neutral-800 text-neutral-400 hover:border-neutral-600'
-                  }`}
-                >
-                  <div className="w-8 h-8 mx-auto mb-2 flex items-center justify-center">
-                    <GlobeIcon />
-                  </div>
-                  <span className="font-medium">Público</span>
-                  <p className="text-xs mt-1">Cualquiera puede unirse</p>
-                </button>
-
-                <button
-                  type="button"
-                  onClick={() => handleInputChange('isPrivate', true)}
-                  className={`p-4 border-2 rounded-lg text-center transition-all duration-200 ${
-                    formData.isPrivate
-                      ? 'border-purple-500 bg-purple-500/10 text-white'
-                      : 'border-neutral-700 bg-neutral-800 text-neutral-400 hover:border-neutral-600'
-                  }`}
-                >
-                  <div className="w-8 h-8 mx-auto mb-2 flex items-center justify-center">
-                    <LockIcon />
-                  </div>
-                  <span className="font-medium">Privado</span>
-                  <p className="text-xs mt-1">Solo con invitación</p>
-                </button>
-              </div>
-              <p className="mt-2 text-sm text-neutral-400">
-                {formData.isPrivate 
-                  ? '🔒 Los grupos privados requieren invitación para unirse' 
-                  : '🌍 Los grupos públicos son visibles para todos los estudiantes'
-                }
-              </p>
-            </div>
-
-            {/* Fecha y Hora (se mantiene igual) */}
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <Input
-                label="Fecha"
+                label="Fecha del Examen"
                 type="date"
-                value={formData.date}
-                onChange={(e) => handleInputChange('date', e.target.value)}
-                error={errors.date}
+                value={formData.meetingDate}
+                onChange={(e) => handleInputChange('meetingDate', e.target.value)}
+                error={errors.meetingDate}
                 icon={<CalendarIcon />}
                 required
               />
-
-              <Input
-                label="Hora"
-                type="time"
-                value={formData.time}
-                onChange={(e) => handleInputChange('time', e.target.value)}
-                error={errors.time}
-                icon={<ClockIcon />}
-                required
-              />
-            </div>
-
-            {/* Número máximo de participantes (se mantiene igual) */}
-            <Input
-              label="Máximo de Participantes"
-              type="number"
-              value={formData.maxParticipants?.toString() || '10'}
-              onChange={(e) => handleInputChange('maxParticipants', parseInt(e.target.value) || 10)}
-              error={errors.maxParticipants}
-              placeholder="10"
-              icon={<UsersIcon />}
-              min="8"
-              max="50"
-              helpText="Mínimo 8 participantes para asegurar un buen ambiente de estudio"
-            />
-
-            {/* Descripción (se mantiene igual) */}
-            <div>
-              <label htmlFor="description" className="block text-sm font-medium text-white mb-2">
-                Descripción de la Sesión
-              </label>
-              <textarea
-                id="description"
-                value={formData.description}
-                onChange={(e) => handleInputChange('description', e.target.value)}
-                placeholder="Describe los temas a tratar, objetivos de la sesión, materiales necesarios..."
-                rows={4}
-                className={`w-full px-4 py-3 bg-neutral-900 border-2 rounded-lg text-white placeholder-neutral-500 focus:outline-none focus:ring-2 focus:ring-red-500 focus:border-red-500 transition-all duration-200 ${
-                  errors.description ? 'border-red-500' : 'border-neutral-700'
-                }`}
-              />
-              {errors.description && (
-                <p className="mt-1 text-sm text-red-400">{errors.description}</p>
-              )}
-              <p className="mt-1 text-sm text-neutral-500">
-                {formData.description.length}/500 caracteres
-              </p>
-            </div>
-
-            {/* Resumen de configuración ACTUALIZADO */}
-            <Card className="p-4 bg-neutral-800/50 border-neutral-700">
-              <h4 className="text-white font-semibold mb-2">Resumen de tu grupo:</h4>
-              <div className="text-sm text-neutral-400 space-y-1">
-                <p>• <span className="text-white">Nombre:</span> {formData.name || 'No especificado'}</p>
-                <p>• <span className="text-white">Materia:</span> {formData.subject || 'No especificada'}</p>
-                <p>• <span className="text-white">Tipo:</span> {formData.sessionType === 'examen' ? 'Preparación Examen' : 'Seguimiento'}</p>
-                <p>• <span className="text-white">Visibilidad:</span> {formData.isPrivate ? 'Privado 🔒' : 'Público 🌍'}</p>
-                <p>• <span className="text-white">Participantes:</span> {formData.maxParticipants} estudiantes máximo</p>
-                {formData.date && (
-                  <p>• <span className="text-white">Fecha:</span> {new Date(formData.date).toLocaleDateString('es-ES')} a las {formData.time}</p>
-                )}
-              </div>
-            </Card>
-
-            {/* Mensaje de error general (se mantiene igual) */}
-            {errors.submit && (
-              <div className="bg-red-900/20 border border-red-500/50 rounded-lg p-4">
-                <div className="flex items-center space-x-2">
-                  <svg className="h-5 w-5 text-red-400 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                  </svg>
-                  <p className="text-red-400 text-sm">{errors.submit}</p>
+            ) : (
+              <div>
+                <label htmlFor="meetingDay" className="block text-sm font-medium text-white mb-2">
+                  Día de la Semana
+                </label>
+                <div className="relative">
+                  <select
+                    id="meetingDay"
+                    value={formData.meetingDay}
+                    onChange={(e) => handleInputChange('meetingDay', e.target.value)}
+                    className={`w-full px-4 py-3 bg-neutral-900 border-2 rounded-lg text-white placeholder-neutral-500 focus:outline-none focus:ring-2 focus:ring-red-500 focus:border-red-500 transition-all duration-200 appearance-none ${
+                      errors.meetingDay ? 'border-red-500' : 'border-neutral-700'
+                    }`}
+                    required
+                  >
+                    <option value="">Selecciona un día</option>
+                    {WEEK_DAYS.map((day) => (
+                      <option key={day} value={day}>
+                        {day}
+                      </option>
+                    ))}
+                  </select>
+                  <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center px-2 text-neutral-400">
+                    <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                    </svg>
+                  </div>
                 </div>
+                {errors.meetingDay && (
+                  <p className="mt-1 text-sm text-red-400">{errors.meetingDay}</p>
+                )}
               </div>
             )}
 
-            {/* Botones (se mantiene igual) */}
-            <div className="flex flex-col sm:flex-row gap-4 pt-4">
-              <Button
-                type="submit"
-                variant="primary"
-                loading={isSubmitting}
-                className="flex-1"
-              >
-                {isSubmitting ? 'Creando Grupo...' : `Crear Grupo ${formData.isPrivate ? 'Privado' : 'Público'}`}
-              </Button>
-              
-              <Button
-                type="button"
-                variant="secondary"
-                onClick={() => window.history.back()}
-                className="flex-1"
-              >
-                Cancelar
-              </Button>
-            </div>
-          </form>
-        </Card>
+            <Input
+              label="Hora"
+              type="time"
+              value={formData.time}
+              onChange={(e) => handleInputChange('time', e.target.value)}
+              error={errors.time}
+              icon={<ClockIcon />}
+              required
+            />
+          </div>
 
-        {/* Información adicional (se mantiene igual) */}
-        <Card className="p-6 mt-6">
-          <div className="text-center">
-            <h3 className="text-lg font-semibold text-white mb-3">
-              ¿Cómo funcionan los grupos de estudio?
-            </h3>
-            <div className="grid grid-cols-1 md:grid-cols-4 gap-4 text-sm text-neutral-400">
-              <div className="text-center">
-                <div className="w-10 h-10 bg-neutral-800 rounded-full mx-auto mb-2 flex items-center justify-center">
-                  <span className="text-lg">👥</span>
-                </div>
-                <p>Comparte conocimientos con compañeros</p>
+          {/* Número máximo de participantes (se mantiene igual) */}
+          <Input
+            label="Máximo de Participantes"
+            type="number"
+            value={formData.maxParticipants?.toString() || '10'}
+            onChange={(e) => handleInputChange('maxParticipants', parseInt(e.target.value) || 10)}
+            error={errors.maxParticipants}
+            placeholder="10"
+            icon={<UsersIcon />}
+            min="8"
+            max="50"
+            helpText="Mínimo 8 participantes para asegurar un buen ambiente de estudio"
+          />
+
+          {/* Descripción (se mantiene igual) */}
+          <div>
+            <label htmlFor="description" className="block text-sm font-medium text-white mb-2">
+              Descripción de la Sesión
+            </label>
+            <textarea
+              id="description"
+              value={formData.description}
+              onChange={(e) => handleInputChange('description', e.target.value)}
+              placeholder="Describe los temas a tratar, objetivos de la sesión, materiales necesarios..."
+              rows={4}
+              className={`w-full px-4 py-3 bg-neutral-900 border-2 rounded-lg text-white placeholder-neutral-500 focus:outline-none focus:ring-2 focus:ring-red-500 focus:border-red-500 transition-all duration-200 ${
+                errors.description ? 'border-red-500' : 'border-neutral-700'
+              }`}
+            />
+            {errors.description && (
+              <p className="mt-1 text-sm text-red-400">{errors.description}</p>
+            )}
+            <p className="mt-1 text-sm text-neutral-500">
+              {formData.description.length}/500 caracteres
+            </p>
+          </div>
+
+          {/* ✅ ACTUALIZADO: Resumen de configuración */}
+          <Card className="p-4 bg-neutral-800/50 border-neutral-700">
+            <h4 className="text-white font-semibold mb-2">Resumen de tu grupo:</h4>
+            <div className="text-sm text-neutral-400 space-y-1">
+              <p>• <span className="text-white">Nombre:</span> {formData.name || 'No especificado'}</p>
+              <p>• <span className="text-white">Materia:</span> {formData.subject || 'No especificada'}</p>
+              <p>• <span className="text-white">Tipo:</span> {formData.sessionType === 'examen' ? 'Preparación Examen' : 'Seguimiento'}</p>
+              <p>• <span className="text-white">Horario:</span> 
+                {formData.sessionType === 'examen' 
+                  ? ` ${formData.meetingDate ? new Date(formData.meetingDate).toLocaleDateString('es-ES') : 'No especificada'} a las ${formData.time}`
+                  : ` Todos los ${formData.meetingDay || 'No especificado'} a las ${formData.time}`
+                }
+              </p>
+              <p>• <span className="text-white">Visibilidad:</span> {formData.isPrivate ? 'Privado 🔒' : 'Público 🌍'}</p>
+              <p>• <span className="text-white">Participantes:</span> {formData.maxParticipants} estudiantes máximo</p>
+            </div>
+          </Card>
+
+          {/* Mensaje de error general (se mantiene igual) */}
+          {errors.submit && (
+            <div className="bg-red-900/20 border border-red-500/50 rounded-lg p-4">
+              <div className="flex items-center space-x-2">
+                <svg className="h-5 w-5 text-red-400 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+                <p className="text-red-400 text-sm">{errors.submit}</p>
               </div>
-              <div className="text-center">
-                <div className="w-10 h-10 bg-neutral-800 rounded-full mx-auto mb-2 flex items-center justify-center">
-                  <span className="text-lg">📅</span>
-                </div>
-                <p>Coordina horarios que les convengan</p>
+            </div>
+          )}
+
+          {/* Botones (se mantiene igual) */}
+          <div className="flex flex-col sm:flex-row gap-4 pt-4">
+            <Button
+              type="submit"
+              variant="primary"
+              loading={isSubmitting}
+              className="flex-1"
+            >
+              {isSubmitting ? 'Creando Grupo...' : `Crear Grupo ${formData.isPrivate ? 'Privado' : 'Público'}`}
+            </Button>
+            
+            <Button
+              type="button"
+              variant="secondary"
+              onClick={() => window.history.back()}
+              className="flex-1"
+            >
+              Cancelar
+            </Button>
+          </div>
+        </form>
+      </Card>
+
+      {/* Información adicional (se mantiene igual) */}
+      <Card className="p-6 mt-6">
+        <div className="text-center">
+          <h3 className="text-lg font-semibold text-white mb-3">
+            ¿Cómo funcionan los grupos de estudio?
+          </h3>
+          <div className="grid grid-cols-1 md:grid-cols-4 gap-4 text-sm text-neutral-400">
+            <div className="text-center">
+              <div className="w-10 h-10 bg-neutral-800 rounded-full mx-auto mb-2 flex items-center justify-center">
+                <span className="text-lg">👥</span>
               </div>
-              <div className="text-center">
-                <div className="w-10 h-10 bg-neutral-800 rounded-full mx-auto mb-2 flex items-center justify-center">
-                  <span className="text-lg">🎯</span>
-                </div>
-                <p>Enfócate en tus objetivos de aprendizaje</p>
+              <p>Comparte conocimientos con compañeros</p>
+            </div>
+            <div className="text-center">
+              <div className="w-10 h-10 bg-neutral-800 rounded-full mx-auto mb-2 flex items-center justify-center">
+                <span className="text-lg">📅</span>
               </div>
-              <div className="text-center">
-                <div className="w-10 h-10 bg-neutral-800 rounded-full mx-auto mb-2 flex items-center justify-center">
-                  <span className="text-lg">🔒</span>
-                </div>
-                <p>Elige entre grupos públicos o privados</p>
+              <p>Coordina horarios que les convengan</p>
+            </div>
+            <div className="text-center">
+              <div className="w-10 h-10 bg-neutral-800 rounded-full mx-auto mb-2 flex items-center justify-center">
+                <span className="text-lg">🎯</span>
               </div>
+              <p>Enfócate en tus objetivos de aprendizaje</p>
+            </div>
+            <div className="text-center">
+              <div className="w-10 h-10 bg-neutral-800 rounded-full mx-auto mb-2 flex items-center justify-center">
+                <span className="text-lg">🔒</span>
+              </div>
+              <p>Elige entre grupos públicos o privados</p>
             </div>
           </div>
-        </Card>
-      </div>
+        </div>
+      </Card>
     </div>
-  );
+  </div>
+);
 };

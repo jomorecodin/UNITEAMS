@@ -13,6 +13,7 @@ import  SubjectsRegister  from '../pages/SubjectsRegister';
 import { CreateGroupPage } from '../pages/CreateTeamPage';
 import { StudyGroupsPage } from '../pages/StudyGroupsPage';
 import AcceptTutor from '../pages/AcceptTutor';
+import { MyStudyGroupsPage } from '../pages/MyStudyGroupsPage';
 
 export const AppRouter: React.FC = () => {
   return (
@@ -38,6 +39,7 @@ export const AppRouter: React.FC = () => {
               <Route path="/create-group" element={<CreateGroupPage />} />
               <Route path="/study-groups" element={<StudyGroupsPage />} />
               <Route path="/accept-tutor" element={<AcceptTutor />} />  
+              <Route path="/my-groups" element={<MyStudyGroupsPage />} />
             </Routes>
           </main>
           <Footer />

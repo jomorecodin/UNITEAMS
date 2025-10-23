@@ -3,7 +3,7 @@ import type { User, Session, AuthError } from '@supabase/supabase-js';
 import { supabase } from '../lib/supabaseClient';
 
 // Helper: timeout de respaldo
-const withTimeout = <T,>(p: Promise<T>, ms = 8000): Promise<T> =>
+const withTimeout = <T,>(p: Promise<T>, ms = 20000): Promise<T> =>
   Promise.race([
     p,
     new Promise<T>((_, reject) => setTimeout(() => reject(new Error('timeout')), ms)) as Promise<T>,
@@ -239,7 +239,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     setLoading(true);
     try {
       (supabase as any).removeAllChannels?.();
-      await withTimeout(supabase.auth.signOut(), 6000);
+      await withTimeout(supabase.auth.signOut(), 20000);
     } catch (err) {
       console.error('signOut error', err);
     } finally {

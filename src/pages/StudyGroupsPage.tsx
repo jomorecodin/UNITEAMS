@@ -11,7 +11,8 @@ interface StudyGroup {
   name: string;
   subject: string;
   session_type: 'seguimiento' | 'examen';
-  meeting_date: string;
+  meeting_date: string | null; // ✅ ACTUALIZADO: Puede ser null para seguimiento
+  meeting_day: string | null; // ✅ NUEVO: Día de la semana para seguimiento
   meeting_time: string;
   description: string;
   max_participants: number;
@@ -68,8 +69,9 @@ export const StudyGroupsPage: React.FC = () => {
 
   const dates = useMemo(() => 
     Array.from(new Set(studyGroups
-      .filter(group => !group.is_private)
-      .map(group => group.meeting_date))).sort(), 
+      .filter(group => !group.is_private && group.meeting_date)
+      .map(group => group.meeting_date!)
+      .filter(date => date !== null))).sort(), 
     [studyGroups]
   );
 
@@ -101,6 +103,41 @@ export const StudyGroupsPage: React.FC = () => {
     return text.toLowerCase().includes(searchTerm.toLowerCase());
   };
 
+  // ✅ FUNCIÓN ACTUALIZADA: Mostrar información de horario según el tipo de sesión
+  const renderScheduleInfo = (group: StudyGroup) => {
+    if (group.session_type === 'examen') {
+      return (
+        <>
+          <div className="flex items-center text-neutral-300 text-sm">
+            <span className="w-6">📅</span>
+            <span className="capitalize">
+              {group.meeting_date ? formatDate(group.meeting_date) : 'Fecha por definir'}
+            </span>
+          </div>
+          <div className="flex items-center text-neutral-300 text-sm">
+            <span className="w-6">🕒</span>
+            <span>{formatTime(group.meeting_time)} hrs</span>
+          </div>
+        </>
+      );
+    } else {
+      return (
+        <>
+          <div className="flex items-center text-neutral-300 text-sm">
+            <span className="w-6">📅</span>
+            <span className="capitalize">
+              {group.meeting_day ? `Todos los ${group.meeting_day}` : 'Día por definir'}
+            </span>
+          </div>
+          <div className="flex items-center text-neutral-300 text-sm">
+            <span className="w-6">🕒</span>
+            <span>{formatTime(group.meeting_time)} hrs</span>
+          </div>
+        </>
+      );
+    }
+  };
+
   // ✅ FILTRO PRINCIPAL: Solo grupos públicos - CORREGIDO
   const filteredGroups = useMemo(() => {
     return studyGroups.filter(group => {
@@ -116,50 +153,55 @@ export const StudyGroupsPage: React.FC = () => {
       
       const matchesSubject = !selectedSubject || group.subject === selectedSubject;
       const matchesSessionType = !selectedSessionType || group.session_type === selectedSessionType;
-      const matchesDate = !selectedDate || group.meeting_date === selectedDate;
+      
+      // ✅ FILTRO DE FECHA ACTUALIZADO: Solo aplicar para grupos de examen
+      const matchesDate = !selectedDate || 
+        (group.session_type === 'examen' && group.meeting_date === selectedDate) ||
+        (group.session_type === 'seguimiento' && !selectedDate); // Los de seguimiento no tienen fecha específica
 
       return matchesSearch && matchesSubject && matchesSessionType && matchesDate;
     });
   }, [studyGroups, searchTerm, selectedSubject, selectedSessionType, selectedDate]);
 
-  const handleJoinGroup = async (groupId: number, groupCode: string) => {
-    try {
-      const tokenKey = 'sb-zskuikxfcjobpygoueqp-auth-token';
-      const tokenData = localStorage.getItem(tokenKey);
-      
-      if (!tokenData) {
-        alert('Debes iniciar sesión para unirte a un grupo');
-        return;
-      }
-
-      const authData = JSON.parse(tokenData);
-      const accessToken = authData.access_token;
-
-      // ✅ En una aplicación real, aquí harías una llamada a tu backend para unirse al grupo
-      const group = studyGroups.find(g => g.id === groupId);
-      if (group) {
-        if (group.current_participants >= group.max_participants) {
-          alert('Este grupo ya está lleno. No puedes unirte.');
-        } else {
-          // Aquí iría la lógica real para unirse al grupo
-          alert(`Te has unido al grupo: ${group.name}\nCódigo: ${groupCode}`);
-          console.log('Uniéndose al grupo:', groupId);
-          
-          // Podrías hacer una llamada PATCH para actualizar los participantes
-          // await fetch(`http://localhost:8080/api/study-groups/${groupCode}/join`, {
-          //   method: 'PATCH',
-          //   headers: {
-          //     'Content-Type': 'application/json',
-          //     'Authorization': `Bearer ${accessToken}`
-          //   }
-          // });
-        }
-      }
-    } catch (error) {
-      console.error('Error uniéndose al grupo:', error);
-      alert('Error al unirse al grupo');
+// Reemplaza la función handleJoinGroup existente por esta:
+const handleJoinGroup = async (groupId: number, groupCode: string) => {
+  try {
+    const tokenKey = 'sb-zskuikxfcjobpygoueqp-auth-token';
+    const tokenData = localStorage.getItem(tokenKey);
+    
+    if (!tokenData) {
+      alert('Debes iniciar sesión para unirte a un grupo');
+      return;
     }
-  };
+
+    const authData = JSON.parse(tokenData);
+    const accessToken = authData.access_token;
+
+    console.log('🔄 Uniéndose al grupo:', groupCode);
+
+    const response = await fetch(`http://localhost:8080/api/study-groups/${groupCode}/join`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${accessToken}`
+      }
+    });
+
+    const result = await response.json();
+
+    if (response.ok && result.success) {
+      alert(`✅ ${result.message}`);
+      // Recargar los grupos para reflejar el cambio
+      window.location.reload();
+    } else {
+      alert(`❌ ${result.error || 'Error al unirse al grupo'}`);
+    }
+    
+  } catch (error: any) {
+    console.error('Error uniéndose al grupo:', error);
+    alert('❌ Error al unirse al grupo: ' + error.message);
+  }
+};
 
   const clearFilters = () => {
     setSearchTerm('');
@@ -287,10 +329,10 @@ export const StudyGroupsPage: React.FC = () => {
             </div>
           </div>
 
-          {/* Date Filter */}
+          {/* ✅ ACTUALIZADO: Date Filter - Solo mostrar para grupos de examen */}
           <div className="mt-4">
             <label htmlFor="date" className="block text-sm font-medium text-white mb-2">
-              Fecha
+              Fecha (solo para exámenes)
             </label>
             <select
               id="date"
@@ -305,6 +347,9 @@ export const StudyGroupsPage: React.FC = () => {
                 </option>
               ))}
             </select>
+            <p className="mt-1 text-xs text-neutral-400">
+              Nota: Los grupos de seguimiento se reúnen semanalmente en el mismo día
+            </p>
           </div>
         </Card>
 
@@ -358,16 +403,9 @@ export const StudyGroupsPage: React.FC = () => {
                   </div>
                 </div>
 
-                {/* Schedule Info */}
+                {/* ✅ ACTUALIZADO: Schedule Info - Usa la nueva función */}
                 <div className="space-y-3">
-                  <div className="flex items-center text-neutral-300 text-sm">
-                    <span className="w-6">📅</span>
-                    <span className="capitalize">{getDayOfWeek(group.meeting_date)}</span>
-                  </div>
-                  <div className="flex items-center text-neutral-300 text-sm">
-                    <span className="w-6">🕒</span>
-                    <span>{formatTime(group.meeting_time)} hrs</span>
-                  </div>
+                  {renderScheduleInfo(group)}
                   <div className="flex items-center text-neutral-300 text-sm">
                     <span className="w-6">👤</span>
                     <span>Tutor: {group.tutor_name || 'Por confirmar'}</span>
@@ -392,8 +430,6 @@ export const StudyGroupsPage: React.FC = () => {
                       />
                     </div>
                   </div>
-                  
-                  {/* ✅ ELIMINADO: No mostrar el código del grupo públicamente */}
                 </div>
 
                 {/* Description */}
