@@ -4,6 +4,7 @@ import { Button } from '../components/Button';
 import { Link } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { supabase } from '../lib/supabaseClient';
+import { createPortal } from 'react-dom';
 
 type RequestRow = {
   id_request: number;
@@ -12,12 +13,48 @@ type RequestRow = {
   grade: number | null;
   carreer_name: string | null;
   description: string | null;
+  state?: 'EN_ESPERA' | 'ACEPTADO' | 'DENEGADO'; // nuevo
 };
 
 const REQUESTS_PUBLIC_API = 'http://localhost:8080/api/requests/public';
 const REQUESTS_API = 'http://localhost:8080/api/requests';
 const SUBJECTS_PUBLIC_API = 'http://localhost:8080/api/subjects/public';
 const TUTORS_API = 'http://localhost:8080/api/tutors'; // POST: crea tutor {idUser(uuid), idSubject(int)}
+// NUEVO: endpoint que crea el tutor desde la request (server lee id_user/id_subject)
+const TUTORS_FROM_REQUEST_API = 'http://localhost:8080/api/tutors/from-request';
+// NUEVO: listar por estado
+const REQUESTS_BY_STATE_API = 'http://localhost:8080/api/requests/state';
+
+// Timeout para peticiones HTTP
+const FETCH_TIMEOUT_MS = 10000;
+
+// Helper: fetch con timeout + parse robusto
+const fetchJsonWithTimeout = async (
+  url: string,
+  init?: RequestInit
+): Promise<{ ok: boolean; status: number; json: any; rawText: string }> => {
+  const controller = new AbortController();
+  const t = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
+  try {
+    const res = await fetch(url, { ...(init || {}), signal: controller.signal });
+    const text = await res.text().catch(() => '');
+    let json: any = [];
+    try {
+      json = text ? JSON.parse(text) : [];
+    } catch {
+      json = [];
+    }
+    return { ok: res.ok, status: res.status, json, rawText: text };
+  } finally {
+    clearTimeout(t);
+  }
+};
+
+// Validador de UUID (usado en acceptRequest)
+const isUUID = (s: string | null | undefined): boolean => {
+  if (!s) return false;
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(s);
+};
 
 const AcceptTutor: React.FC = () => {
   const { session } = useAuth();
@@ -28,12 +65,19 @@ const AcceptTutor: React.FC = () => {
   const [subjectsMap, setSubjectsMap] = useState<Record<number, string>>({});
   // Mapa de nombres de usuario consultados en Supabase por id_user
   const [userNames, setUserNames] = useState<Record<string, string>>({});
+  // Confirm modal state
+  const [confirm, setConfirm] = useState<{
+    open: boolean;
+    type: 'accept' | 'decline' | null;
+    request: RequestRow | null;
+  }>({ open: false, type: null, request: null });
 
   const mapRequest = (r: any): RequestRow | null => {
     const id_request = r.id_request ?? r.idRequest ?? r.id;
     const id_user = r.id_user ?? r.idUser ?? r.userId;
     const id_subject = r.id_subject ?? r.idSubject ?? r.subjectId;
     if (id_request == null || id_user == null || id_subject == null) return null;
+    const state = (r.state ?? r.estado ?? 'EN_ESPERA') as RequestRow['state'];
     return {
       id_request: Number(id_request),
       id_user: String(id_user),
@@ -41,6 +85,7 @@ const AcceptTutor: React.FC = () => {
       grade: r.grade != null ? Number(r.grade) : null,
       carreer_name: r.carreer_name ?? r.careerName ?? null,
       description: r.description ?? null,
+      state,
     };
   };
 
@@ -49,10 +94,11 @@ const AcceptTutor: React.FC = () => {
 
   const fetchSubjectsMap = async () => {
     try {
-      const res = await fetch(SUBJECTS_PUBLIC_API, { headers: { Accept: 'application/json' } });
-      if (!res.ok) return;
-      const json = await res.json().catch(() => []);
-      const list = (Array.isArray(json) ? json : (json?.data || json?.content || [])) as any[];
+      const { ok, json } = await fetchJsonWithTimeout(SUBJECTS_PUBLIC_API, {
+        headers: { Accept: 'application/json' },
+      });
+      if (!ok) return;
+      const list = (Array.isArray(json) ? json : (json?.data || json?.content || json?.items || [])) as any[];
       const map: Record<number, string> = {};
       list.forEach((s: any) => {
         const id = s.id_subject ?? s.subject_id ?? s.idSubject ?? s.subjectId ?? s.id;
@@ -126,43 +172,53 @@ const AcceptTutor: React.FC = () => {
   const fetchRequests = async () => {
     setLoading(true);
     setMessage(null);
+    let isMounted = true;
     try {
-      const res = await fetch(REQUESTS_PUBLIC_API, { headers: { Accept: 'application/json' } });
-      if (!res.ok) throw new Error(`GET /requests/public -> ${res.status}`);
-      const json = await res.json().catch(() => []);
-      const raw = Array.isArray(json) ? json : (json?.data || json?.content || []);
-      const rows: RequestRow[] = raw.map(mapRequest).filter(isRequestRow);
-      setRequests(rows);
+      const { ok, status, json, rawText } = await fetchJsonWithTimeout(REQUESTS_PUBLIC_API, {
+        headers: { Accept: 'application/json' },
+      });
+      if (!ok) throw new Error(`GET /requests/public -> ${status} ${rawText?.slice(0, 160)}`);
 
-      // cargar nombres por id_user desde Supabase
+      const raw = Array.isArray(json) ? json : (json?.data || json?.content || json?.items || []);
+      const rows: RequestRow[] = raw.map(mapRequest).filter(isRequestRow);
+      if (!isMounted) return;
+      setRequests(rows.filter(r => r.state === 'EN_ESPERA')); // solo pendientes
+
+      // cargar nombres por id_user desde Supabase (no bloquea UI)
       const ids = rows.map((r) => r.id_user);
-      fetchUserNames(ids); // no await: no bloquea la UI
+      fetchUserNames(ids);
     } catch (err) {
-      setMessage({ type: 'error', text: 'Error cargando solicitudes.' });
-      console.error(err);
+      console.error('Error cargando solicitudes:', err);
+      setMessage({ type: 'error', text: 'No se pudieron cargar las solicitudes.' });
+      setRequests([]); // deja la tabla en vacío en caso de error
     } finally {
+      // asegura que loading pase a false siempre
       setLoading(false);
     }
+    return () => {
+      isMounted = false;
+    };
   };
 
-  useEffect(() => {
-    fetchSubjectsMap();
-    fetchRequests();
-  }, []);
-
-  // Util: extrae el sub (uuid) del JWT
-  const getUserIdFromToken = (token: string): string | null => {
-    try {
-      const [, payload] = token.split('.');
-      if (!payload) return null;
-      const json = JSON.parse(atob(payload.replace(/-/g, '+').replace(/_/g, '/')));
-      return typeof json?.sub === 'string' ? json.sub : null;
-    } catch {
-      return null;
+  // Helper para actualizar estado en backend
+  const updateRequestState = async (id: number, newState: 'ACEPTADO' | 'DENEGADO' | 'EN_ESPERA') => {
+    const token = session?.access_token || localStorage.getItem('accessToken') || '';
+    const res = await fetch(`${REQUESTS_API}/${id}/state`, {
+      method: 'PATCH',
+      headers: {
+        'Content-Type': 'application/json',
+        Accept: 'application/json',
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify({ state: newState }),
+    });
+    if (!res.ok) {
+      const txt = await res.text().catch(() => '');
+      throw new Error(txt || `PATCH /requests/${id}/state -> ${res.status}`);
     }
   };
 
-  // POST /api/tutors con el DTO que espera el backend { idUser, idSubject }
+  // Crea el tutor vía backend: JSON con camelCase { idUser, idSubject }
   const createTutorBackend = async (
     token: string,
     payload: { idUser: string; idSubject: number }
@@ -175,8 +231,8 @@ const AcceptTutor: React.FC = () => {
         Authorization: `Bearer ${token}`,
       },
       body: JSON.stringify({
-        idUser: payload.idUser,
-        idSubject: payload.idSubject,
+        idUser: payload.idUser,     // <- antes enviaba id_user
+        idSubject: payload.idSubject, // <- antes enviaba id_subject
       }),
     });
 
@@ -188,6 +244,35 @@ const AcceptTutor: React.FC = () => {
     throw err;
   };
 
+  // NUEVO: intenta crear tutor desde la fila de requests
+  const approveTutorFromRequest = async (token: string, idRequest: number) => {
+    // Variante con path param
+    let res = await fetch(`${TUTORS_FROM_REQUEST_API}/${idRequest}`, {
+      method: 'POST',
+      headers: { Accept: 'application/json', Authorization: `Bearer ${token}` },
+    });
+    // Variante con body { idRequest } si la anterior no existe
+    if (res.status === 404 || res.status === 405) {
+      res = await fetch(TUTORS_FROM_REQUEST_API, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Accept: 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({ idRequest }),
+      });
+    }
+    if (!res.ok) {
+      const txt = await res.text().catch(() => '');
+      const err: any = new Error(txt || `POST /tutors/from-request -> ${res.status}`);
+      err.status = res.status;
+      throw err;
+    }
+    return res.json().catch(() => null);
+  };
+
+  // REEMPLAZADO: aceptar con from-request y fallback a POST /api/tutors usando r.id_user
   const acceptRequest = async (r: RequestRow) => {
     setProcessingId(r.id_request);
     setMessage(null);
@@ -195,65 +280,178 @@ const AcceptTutor: React.FC = () => {
       const token = session?.access_token || localStorage.getItem('accessToken') || '';
       if (!token) throw new Error('Sesión inválida');
 
-      // El backend valida que idUser == sub del token; usa el del token.
-      const idFromToken = getUserIdFromToken(token);
-      if (!idFromToken) throw new Error('Token inválido: no se pudo leer el usuario');
-
-      // 1) Crear tutor en backend (solo idUser + idSubject)
-      await createTutorBackend(token, {
-        idUser: idFromToken,
-        idSubject: r.id_subject,
-      });
-
-      // 2) Eliminar la solicitud
-      const delRes = await fetch(`${REQUESTS_API}/${r.id_request}`, {
-        method: 'DELETE',
-        headers: { Accept: 'application/json', Authorization: `Bearer ${token}` },
-      });
-      if (!delRes.ok) {
-        const text = await delRes.text().catch(() => '');
-        throw new Error(text || `Error al eliminar solicitud (${delRes.status})`);
+      // 1) Intenta crear tutor desde la request (el servidor toma id_user e id_subject)
+      let createdOk = false;
+      try {
+        await approveTutorFromRequest(token, r.id_request);
+        createdOk = true
+      } catch (e: any) {
+        // Si está restringido a ADMIN o no existe, hacemos fallback
+        if (e?.status === 403 || e?.status === 404 || e?.status === 405) {
+          // Fallback: crear tutor enviando el solicitante directo
+          if (!isUUID(r.id_user)) throw new Error('La solicitud no trae un id_user válido (UUID).');
+          await createTutorBackend(token, { idUser: r.id_user, idSubject: r.id_subject });
+          createdOk = true;
+        } else {
+          throw e;
+        }
       }
 
-      setMessage({ type: 'success', text: 'Solicitud aceptada. Tutor creado.' });
-      setRequests((prev) => prev.filter((item) => item.id_request !== r.id_request));
+      if (!createdOk) throw new Error('No se pudo crear el tutor.');
+
+      // 2) Actualiza el estado a ACEPTADO (no se elimina la fila)
+      await updateRequestState(r.id_request, 'ACEPTADO');
+
+      setRequests(prev => prev.filter(x => x.id_request !== r.id_request));
+      setMessage({ type: 'success', text: 'Solicitud aceptada.' });
     } catch (err: any) {
-      if (err?.status === 409) {
-        setMessage({ type: 'error', text: 'El tutor ya existe para esa materia.' });
-      } else {
-        console.error(err);
-        setMessage({ type: 'error', text: err?.message || 'Error al aceptar la solicitud.' });
-      }
+      console.error(err);
+      setMessage({ type: 'error', text: err?.message || 'Error al aceptar la solicitud.' });
     } finally {
       setProcessingId(null);
     }
   };
 
+  // Denegar: solo cambia estado
   const declineRequest = async (r: RequestRow) => {
     setProcessingId(r.id_request);
     setMessage(null);
     try {
-      const token = session?.access_token || localStorage.getItem('accessToken') || '';
-      if (!token) throw new Error('Sesión inválida');
-
-      const delRes = await fetch(`${REQUESTS_API}/${r.id_request}`, {
-        method: 'DELETE',
-        headers: { Accept: 'application/json', Authorization: `Bearer ${token}` },
-      });
-      if (!delRes.ok) {
-        const text = await delRes.text().catch(() => '');
-        throw new Error(text || `Error al declinar (${delRes.status})`);
-      }
-
+      await updateRequestState(r.id_request, 'DENEGADO');
+      setRequests(prev => prev.filter(x => x.id_request !== r.id_request));
       setMessage({ type: 'success', text: 'Solicitud declinada.' });
-      setRequests((prev) => prev.filter((item) => item.id_request !== r.id_request));
-    } catch (err) {
+    } catch (err: any) {
       console.error(err);
-      setMessage({ type: 'error', text: 'Error al declinar la solicitud.' });
+      setMessage({ type: 'error', text: err?.message || 'Error al declinar la solicitud.' });
     } finally {
       setProcessingId(null);
     }
   };
+
+  // Abrir/cerrar modal
+  const openConfirm = (type: 'accept' | 'decline', r: RequestRow) =>
+    setConfirm({ open: true, type, request: r });
+  const closeConfirm = () => setConfirm({ open: false, type: null, request: null });
+  const onConfirm = async () => {
+    if (!confirm.request || !confirm.type) return;
+    const r = confirm.request;
+    closeConfirm();
+    if (confirm.type === 'accept') await acceptRequest(r);
+    else await declineRequest(r);
+  };
+
+  // Modal en portal (estable, centrado y con scroll bloqueado)
+  function ConfirmModal(props: {
+    open: boolean;
+    title: string;
+    message: string;
+    items?: Array<{ label: string; value: string }>;
+    onCancel: () => void;
+    onConfirm: () => void;
+  }) {
+    const { open, title, message, items, onCancel, onConfirm } = props;
+
+    React.useEffect(() => {
+      if (!open) return;
+      const prev = document.body.style.overflow;
+      document.body.style.overflow = 'hidden';
+      return () => {
+        document.body.style.overflow = prev;
+      };
+    }, [open]);
+
+    if (!open) return null;
+
+    return createPortal(
+      <div className="fixed inset-0 z-[1000] flex items-center justify-center p-4" role="dialog" aria-modal="true">
+        <div className="absolute inset-0 bg-black/60" onClick={onCancel} />
+        <div className="relative w-full max-w-md rounded-lg bg-neutral-900 border border-neutral-700 p-6 shadow-xl text-center">
+          <h3 className="text-lg font-semibold text-white mb-2">{title}</h3>
+          <p className="text-sm text-neutral-300 mb-4">{message}</p>
+          {items && items.length > 0 && (
+            <ul className="text-sm text-neutral-400 mb-6 space-y-1">
+              {items.map((it, i) => (
+                <li key={i}>
+                  <span className="text-neutral-400">{it.label}: </span>
+                  <span className="text-neutral-200 font-medium break-all">{it.value}</span>
+                </li>
+              ))}
+            </ul>
+          )}
+          <div className="flex gap-3 justify-center">
+            <Button variant="secondary" onClick={onCancel}>Cancelar</Button>
+            <Button variant="primary" onClick={onConfirm}>Confirmar</Button>
+          </div>
+        </div>
+      </div>,
+      document.body
+    );
+  }
+
+  useEffect(() => {
+    let alive = true;
+    const controller = new AbortController();
+
+    const load = async () => {
+      setLoading(true);
+      setMessage(null);
+      try {
+        // Materias
+        const resSubj = await fetch(SUBJECTS_PUBLIC_API, {
+          headers: { Accept: 'application/json' },
+          signal: controller.signal,
+        });
+        if (resSubj.ok) {
+          const txt = await resSubj.text();
+          const json = txt ? JSON.parse(txt) : [];
+          const list = Array.isArray(json) ? json : (json?.data || json?.content || json?.items || []);
+          const map: Record<number, string> = {};
+          (list as any[]).forEach((s: any) => {
+            const id = s.id_subject ?? s.subject_id ?? s.idSubject ?? s.subjectId ?? s.id;
+            const name = s.name ?? s.subject_name ?? s.subjectName ?? s.nombre;
+            if (id != null && name) map[Number(id)] = String(name);
+          });
+          if (alive) setSubjectsMap(map);
+        }
+
+        // Requests: ahora usando el endpoint por estado (EN_ESPERA)
+        const resReq = await fetch(`${REQUESTS_BY_STATE_API}/EN_ESPERA`, {
+          headers: { Accept: 'application/json' },
+          signal: controller.signal,
+        });
+        if (!resReq.ok) throw new Error(`GET /requests/state/EN_ESPERA -> ${resReq.status}`);
+
+        const txtReq = await resReq.text();
+        const jsonReq = txtReq ? JSON.parse(txtReq) : [];
+        const raw = Array.isArray(jsonReq) ? jsonReq : (jsonReq?.data || jsonReq?.content || jsonReq?.items || []);
+        const rows = (raw as any[])
+          .map(mapRequest)
+          .filter((x): x is RequestRow => x !== null); // ya viene filtrado por estado
+
+        if (alive) {
+          setRequests(rows);
+          // Nombres desde Supabase (no bloquea UI)
+          fetchUserNames(rows.map(r => r.id_user)).catch(() => {});
+        }
+      } catch (e) {
+        if (alive) {
+          console.error('Carga de solicitudes falló:', e);
+          setMessage({ type: 'error', text: 'No se pudieron cargar las solicitudes.' });
+          setRequests([]);
+        }
+      } finally {
+        if (alive) setLoading(false);
+      }
+    };
+
+    load();
+
+    // cleanup: aborta y evita updates luego de unmount
+    return () => {
+      alive = false;
+      controller.abort();
+    };
+  }, []);
 
   return (
     <Card className="p-6 mt-30 ml-4 mr-4">
@@ -306,7 +504,7 @@ const AcceptTutor: React.FC = () => {
                   <div className="flex gap-2">
                     <Button
                       variant="primary"
-                      onClick={() => acceptRequest(r)}
+                      onClick={() => openConfirm('accept', r)}
                       disabled={processingId !== null}
                       className="px-3 py-1"
                     >
@@ -314,7 +512,7 @@ const AcceptTutor: React.FC = () => {
                     </Button>
                     <Button
                       variant="secondary"
-                      onClick={() => declineRequest(r)}
+                      onClick={() => openConfirm('decline', r)}
                       disabled={processingId !== null}
                       className="px-3 py-1"
                     >
@@ -333,6 +531,27 @@ const AcceptTutor: React.FC = () => {
           <Button variant="secondary">Volver al Dashboard</Button>
         </Link>
       </div>
+
+      {/* Reemplaza el modal anterior por este componente */}
+      <ConfirmModal
+        open={confirm.open && !!confirm.request}
+        title={confirm.type === 'accept' ? 'Confirmar aceptación' : 'Confirmar rechazo'}
+        message={
+          confirm.type === 'accept'
+            ? '¿Seguro que deseas aceptar esta solicitud?'
+            : '¿Seguro que deseas declinar esta solicitud?'
+        }
+        items={
+          confirm.request
+            ? [
+                { label: 'Usuario', value: userNames[confirm.request.id_user] || confirm.request.id_user },
+                { label: 'Materia', value: subjectsMap[confirm.request.id_subject] ?? `#${confirm.request.id_subject}` },
+              ]
+            : []
+        }
+        onCancel={closeConfirm}
+        onConfirm={onConfirm}
+      />
     </Card>
   );
 };

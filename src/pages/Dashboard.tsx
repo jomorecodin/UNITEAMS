@@ -432,21 +432,23 @@ export const Dashboard: React.FC = () => {
         </div>
 
         {/* Cards de acciones principales */}
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 mb-8">
+          
+
           <Card className="p-6">
             <div className="text-center">
               <div className="w-12 h-12 bg-neutral-800 rounded-full mx-auto mb-4 flex items-center justify-center">
                 <span className="text-white text-2xl">🎓</span>
               </div>
               <h3 className="text-lg font-semibold text-white mb-2">
-                Conviértete en Tutor
+                Nueva solicitud de tutoría
               </h3>
               <p className="text-neutral-400 text-sm mb-4">
-                Comparte tu conocimiento y ayuda a otros estudiantes
+                Envía una solicitud para convertirte en tutor
               </p>
-              <Link to="/apply-tutor">
+              <Link to="/requests/new">
                 <Button variant="primary" className="w-full">
-                  Aplicar como Tutor
+                  Crear solicitud
                 </Button>
               </Link>
             </div>
@@ -470,10 +472,9 @@ export const Dashboard: React.FC = () => {
               </Link>
             </div>
           </Card>
-        </div>
 
-        {/* Card de aceptación de tutor (solo para administradores) */}
-          <Card className="p-6 mb-8">
+          {/* Card de aceptación de tutor (solo para administradores) */}
+          <Card className="p-6">
             <div className="text-center">
               <div className="w-12 h-12 bg-neutral-800 rounded-full mx-auto mb-4 flex items-center justify-center">
                 <span className="text-white text-xl">✅</span>
@@ -486,11 +487,16 @@ export const Dashboard: React.FC = () => {
               </p>
               <div className="mt-4">
                 <Link to="/accept-tutor">
-                  <Button variant="primary">Ir</Button>
+                  <Button variant="primary" className="w-full">Ir</Button>
                 </Link>
               </div>
             </div>
           </Card>
+
+          
+        </div>
+
+        
 
         {/* Botón de cerrar sesión */}
         <div className="text-center mt-8">

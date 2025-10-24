@@ -8,12 +8,12 @@ import { Landing } from '../pages/Landing';
 import { SignUp } from '../pages/SignUp';
 import { SignIn } from '../pages/SignIn';
 import { Dashboard } from '../pages/Dashboard';
-import { ApplyTutor } from '../pages/ApplyTutor';
 import  SubjectsRegister  from '../pages/SubjectsRegister';
 import { CreateGroupPage } from '../pages/CreateTeamPage';
 import { StudyGroupsPage } from '../pages/StudyGroupsPage';
 import AcceptTutor from '../pages/AcceptTutor';
 import { MyStudyGroupsPage } from '../pages/MyStudyGroupsPage';
+import NewRequest from '../pages/NewRequest';
 
 export const AppRouter: React.FC = () => {
   return (
@@ -34,12 +34,13 @@ export const AppRouter: React.FC = () => {
                   </ProtectedRoute>
                 }
               />
-              <Route path="/apply-tutor" element={<ApplyTutor />} />
+              
               <Route path="/subjects-register" element={<SubjectsRegister />} />  
               <Route path="/create-group" element={<CreateGroupPage />} />
               <Route path="/study-groups" element={<StudyGroupsPage />} />
               <Route path="/accept-tutor" element={<AcceptTutor />} />  
               <Route path="/my-groups" element={<MyStudyGroupsPage />} />
+              <Route path="/requests/new" element={<NewRequest />} />
             </Routes>
           </main>
           <Footer />
