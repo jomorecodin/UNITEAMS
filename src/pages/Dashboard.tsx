@@ -23,6 +23,11 @@ export const Dashboard: React.FC = () => {
   const [calendarLoading, setCalendarLoading] = useState(true);
   const [currentWeekStart, setCurrentWeekStart] = useState<Date>(new Date());
 
+  // Log del perfil al cargar/cambiar
+  useEffect(() => {
+    console.log('Dashboard profile:', profile);
+  }, [profile]);
+
   const handleSignOut = async () => {
     await signOut();
   };
@@ -168,7 +173,9 @@ export const Dashboard: React.FC = () => {
           <p className="text-white">Cargando tu dashboard...</p>
         </div>
       </div>
+      
     );
+    
   }
 
   if (!user) {
@@ -181,19 +188,27 @@ export const Dashboard: React.FC = () => {
 
   const calendarDays = generateTwoWeekCalendar();
 
+  // Nombre para saludo (sin fallback al correo)
+  const getFirstName = (p?: any): string => {
+    const pick = (s?: string) => (typeof s === 'string' ? s.trim() : '');
+    const fromDisplay = pick(p?.display_name)?.split(/\s+/)[0] || '';
+    const fromFull = pick(p?.full_name)?.split(/\s+/)[0] || '';
+    return pick(p?.first_name) || fromDisplay || fromFull || 'Usuario';
+  };
+  const firstName = getFirstName(profile);
+
   return (
     <div className="min-h-screen bg-black px-4 sm:px-6 lg:px-8" style={{ paddingTop: '5rem', paddingBottom: '3rem' }}>
       <div className="max-w-7xl mx-auto">
-        
-
         {/* Header de bienvenida */}
         <div className="text-center mb-12">
           <h1 className="text-4xl font-bold text-white mb-4">
             Bienvenido a tu Panel
           </h1>
           <p className="text-neutral-400 text-lg">
-            Hola, {profile?.display_name || profile?.first_name || user?.email}! Este es tu espacio personal de trabajo.
+            Hola, {firstName}! Este es tu espacio personal de trabajo.
           </p>
+          
           {profile && (
             <div className="mt-4 text-sm text-neutral-500">
               <p>Correo: {profile.email}</p>
@@ -483,7 +498,7 @@ export const Dashboard: React.FC = () => {
                 Aceptación de tutor
               </h3>
               <p className="text-neutral-400 text-sm mb-4">
-                Revisa y procesa las solicitudes de tutoría pendientes.
+                Gestiona las solicitudes de tutoría pendientes.
               </p>
               <div className="mt-4">
                 <Link to="/accept-tutor">
