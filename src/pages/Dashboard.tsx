@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { Card } from '../components/Card';
 import { Button } from '../components/Button';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom'; // <-- añade useNavigate
 
 interface StudySession {
   id: number;
@@ -19,18 +19,78 @@ interface StudySession {
 
 export const Dashboard: React.FC = () => {
   const { user, profile, signOut, loading, initialLoading } = useAuth();
+  const navigate = useNavigate(); // <-- hook de navegación
   const [studySessions, setStudySessions] = useState<StudySession[]>([]);
   const [calendarLoading, setCalendarLoading] = useState(true);
   const [currentWeekStart, setCurrentWeekStart] = useState<Date>(new Date());
+
+  // NUEVO: estado para saber si el usuario es tutor
+  const [isTutor, setIsTutor] = useState<boolean>(false);
+  const [tutorCheckLoading, setTutorCheckLoading] = useState(true);
+
+  // Estado local para el botón de cerrar sesión
+  const [signingOut, setSigningOut] = useState(false);
 
   // Log del perfil al cargar/cambiar
   useEffect(() => {
     console.log('Dashboard profile:', profile);
   }, [profile]);
 
-  const handleSignOut = async () => {
-    await signOut();
-  };
+  // NUEVO: verificar si el usuario es tutor al montar el Dashboard
+  useEffect(() => {
+    let alive = true;
+    const checkTutor = async () => {
+      setTutorCheckLoading(true);
+      try {
+        const tokenKey = 'sb-zskuikxfcjobpygoueqp-auth-token';
+        const tokenData = localStorage.getItem(tokenKey);
+        if (!tokenData) {
+          if (alive) {
+            setIsTutor(false);
+            setTutorCheckLoading(false);
+          }
+          return;
+        }
+        const authData = JSON.parse(tokenData);
+        const accessToken = authData.access_token;
+
+        const res = await fetch('http://localhost:8080/api/auth/login', {
+          method: 'POST',
+          headers: {
+            Accept: 'application/json',
+            Authorization: `Bearer ${accessToken}`,
+          },
+        });
+
+        if (!alive) return;
+
+        if (res.ok) {
+          const data = await res.json();
+          console.log('✅ Tutor check:', data);
+          setIsTutor(data.isTutor === true);
+          if (data.isTutor === true) {
+            console.log('🎓 Bienvenido tutor');
+          }
+        } else {
+          console.error('❌ Tutor check error:', res.status);
+          setIsTutor(false);
+        }
+      } catch (e) {
+        console.error('❌ Check tutor failed:', e);
+        if (alive) setIsTutor(false);
+      } finally {
+        if (alive) setTutorCheckLoading(false);
+      }
+    };
+    if (user) {
+      checkTutor();
+    } else {
+      setTutorCheckLoading(false);
+    }
+    return () => {
+      alive = false;
+    };
+  }, [user]);
 
   // ✅ Cargar sesiones de estudio del usuario
   useEffect(() => {
@@ -144,6 +204,31 @@ export const Dashboard: React.FC = () => {
 
   const goToToday = () => {
     setCurrentWeekStart(new Date());
+  };
+
+  // Limpia claves de Supabase/Auth del storage
+  const clearAuthStorage = () => {
+    try {
+      const keys = Object.keys(localStorage);
+      for (const k of keys) {
+        if (k.startsWith('sb-') || k.includes('auth') || k === 'accessToken') {
+          localStorage.removeItem(k);
+        }
+      }
+      // Por si acaso:
+      sessionStorage.clear();
+    } catch (e) {
+      console.warn('Auth storage clear warn:', e);
+    }
+  };
+
+  const SIGN_OUT_TIMEOUT_MS = 1200; // antes 5000
+  const wait = (ms: number) => new Promise((res) => setTimeout(res, ms));
+
+  const handleSignOut = () => {
+    // logout instantáneo + navegación inmediata
+    signOut();
+    navigate('/login', { replace: true });
   };
 
   // ✅ Obtener nombre del mes y año
@@ -448,8 +533,6 @@ export const Dashboard: React.FC = () => {
 
         {/* Cards de acciones principales */}
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 mb-8">
-          
-
           <Card className="p-6">
             <div className="text-center">
               <div className="w-12 h-12 bg-neutral-800 rounded-full mx-auto mb-4 flex items-center justify-center">
@@ -508,7 +591,27 @@ export const Dashboard: React.FC = () => {
             </div>
           </Card>
 
-          
+          {/* NUEVO: Card visible solo si es tutor */}
+          {isTutor && !tutorCheckLoading && (
+            <Card className="p-6">
+              <div className="text-center">
+                <div className="w-12 h-12 bg-neutral-800 rounded-full mx-auto mb-4 flex items-center justify-center">
+                  <span className="text-white text-xl">👥</span>
+                </div>
+                <h3 className="text-lg font-semibold text-white mb-2">
+                  Postularse a un grupo
+                </h3>
+                <p className="text-neutral-400 text-sm mb-4">
+                  Únete a grupos de estudio disponibles como tutor
+                </p>
+                <Link to="/apply-to-group">
+                  <Button variant="primary" className="w-full">
+                    Ver grupos
+                  </Button>
+                </Link>
+              </div>
+            </Card>
+          )}
         </div>
 
         
@@ -518,7 +621,7 @@ export const Dashboard: React.FC = () => {
           <Button
             variant="secondary"
             onClick={handleSignOut}
-            loading={loading}
+            loading={signingOut}            // <-- usa el estado local
             className="px-6 py-3"
           >
             Cerrar sesión

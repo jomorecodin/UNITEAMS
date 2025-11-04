@@ -29,7 +29,7 @@ interface AuthContextType {
   user: User | null;
   session: Session | null;
   profile: UserProfile | null;
-  loading: boolean;
+  loading: boolean;                 // <- ya existe en la interfaz
   initialLoading: boolean;
   error: string | null;
   signUp: (
@@ -48,6 +48,7 @@ interface AuthContextType {
   }) => Promise<{ error: Error | null }>;
   clearError: () => void;
   forceSignOut: () => Promise<void>;
+  fastSignOut: () => void;          // <- añade la firma de fastSignOut
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -58,11 +59,23 @@ export const useAuth = () => {
   return context;
 };
 
-export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const [user, setUser] = useState<User | null>(null);
-  const [session, setSession] = useState<Session | null>(null);
-  const [profile, setProfile] = useState<UserProfile | null>(null);
-  const [initialLoading, setInitialLoading] = useState(true);
+// Limpia storage de credenciales
+const clearAuthStorage = () => {
+  try {
+    Object.keys(localStorage).forEach((k) => {
+      if (k.startsWith('sb-') || k.includes('auth') || k === 'accessToken') {
+        localStorage.removeItem(k);
+      }
+    });
+    sessionStorage.clear();
+  } catch {}
+};
+
+export function AuthProvider({ children }: { children: React.ReactNode }) {
+  const [session, setSession] = React.useState<any>(null);
+  const [user, setUser] = React.useState<any>(null);
+  const [profile, setProfile] = React.useState<any>(null);
+  const [initialLoading, setInitialLoading] = React.useState(true);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -94,6 +107,15 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       console.error('Error during force sign out:', err);
     }
   };
+
+  // Logout inmediato: limpia storage y resetea estado del contexto
+  const fastSignOut = React.useCallback(() => {
+    clearAuthStorage();
+    setSession(null);
+    setUser(null);
+    setProfile(null);
+    setInitialLoading(false);
+  }, []);
 
   useEffect(() => {
     let active = true;
@@ -235,20 +257,19 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   };
 
-  const signOut = async () => {
-    setLoading(true);
+  const signOut = async (): Promise<void> => {
     try {
+      // Cierra canales en cliente
       (supabase as any).removeAllChannels?.();
-      await withTimeout(supabase.auth.signOut(), 20000);
-    } catch (err) {
-      console.error('signOut error', err);
-    } finally {
-      setUser(null);
-      setProfile(null);
-      setSession(null);
-      setLoading(false);
-      setInitialLoading(false);
-    }
+    } catch {}
+    // Limpia estado y storage inmediatamente
+    fastSignOut();
+    // Lanza el signOut real en segundo plano (no bloquea la UI)
+    setTimeout(() => {
+      supabase.auth.signOut().catch((e) => console.warn('background signOut failed:', e));
+    }, 0);
+    // No esperes nada (retorna resuelto)
+    return;
   };
 
   const updateProfile = async (updates: {
@@ -267,35 +288,41 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         new_avatar_url: updates.avatarUrl || null,
       });
 
-      if (error) return { error: new Error(error.message) };
+      if (error) {
+        setError('Error updating profile');
+        return { error };
+      }
 
-      const p = await fetchUserProfile(user.id);
-      setProfile(p);
+      setProfile((prev: any) => ({
+        ...prev,
+        first_name: updates.firstName !== undefined ? updates.firstName : prev.first_name,
+        last_name: updates.lastName !== undefined ? updates.lastName : prev.last_name,
+        bio: updates.bio !== undefined ? updates.bio : prev.bio,
+        avatar_url: updates.avatarUrl !== undefined ? updates.avatarUrl : prev.avatar_url,
+      }));
+
       return { error: null };
     } catch (err) {
-      const msg = err instanceof Error ? err.message : 'Update failed';
-      return { error: new Error(msg) };
+      console.error('Error updating profile:', err);
+      return { error: new Error('Error updating profile') };
     }
   };
 
-  return (
-    <AuthContext.Provider
-      value={{
-        user,
-        session,
-        profile,
-        loading,
-        initialLoading,
-        error,
-        signUp,
-        signIn,
-        signOut,
-        updateProfile,
-        clearError,
-        forceSignOut,
-      }}
-    >
-      {children}
-    </AuthContext.Provider>
-  );
-};
+  const value = {
+    user,
+    session,
+    profile,
+    loading,
+    initialLoading,
+    error,
+    signUp,
+    signIn,
+    signOut,
+    updateProfile,
+    clearError,
+    forceSignOut,
+    fastSignOut,
+  };
+
+  return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
+}

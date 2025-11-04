@@ -14,6 +14,8 @@ import { StudyGroupsPage } from '../pages/StudyGroupsPage';
 import AcceptTutor from '../pages/AcceptTutor';
 import { MyStudyGroupsPage } from '../pages/MyStudyGroupsPage';
 import NewRequest from '../pages/NewRequest';
+import { ApplyToGroupPage } from '../pages/ApplyToGroupPage';
+import { GroupTutorRequestsPage } from '../pages/GroupTutorRequestsPage';
 
 export const AppRouter: React.FC = () => {
   return (
@@ -41,6 +43,8 @@ export const AppRouter: React.FC = () => {
               <Route path="/accept-tutor" element={<AcceptTutor />} />  
               <Route path="/my-groups" element={<MyStudyGroupsPage />} />
               <Route path="/requests/new" element={<NewRequest />} />
+              <Route path="/apply-to-group" element={<ApplyToGroupPage />} />
+              <Route path="/groups/:groupId/requests" element={<GroupTutorRequestsPage />} />
             </Routes>
           </main>
           <Footer />
