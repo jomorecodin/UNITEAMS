@@ -3,6 +3,7 @@
 
 :root {
   color-scheme: dark;
+  --font-zoom: 1; /* 1 = 100% */
 }
 
 * {
@@ -187,4 +188,9 @@ input[type="checkbox"]:hover {
 .spinner-red {
   border-color: #dd2e03;
   border-top-color: transparent;
+}
+
+/* Escala la tipografía basada en rem (Tailwind usa rem) */
+html {
+  font-size: calc(16px * var(--font-zoom));
 }
