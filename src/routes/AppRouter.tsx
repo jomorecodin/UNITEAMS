@@ -17,6 +17,7 @@ import NewRequest from '../pages/NewRequest';
 import { ApplyToGroupPage } from '../pages/ApplyToGroupPage';
 import { GroupTutorRequestsPage } from '../pages/GroupTutorRequestsPage';
 import { NotFound } from '../pages/NotFound';
+import { Profile } from '../pages/Profile';
 
 export const AppRouter: React.FC = () => {
   return (
@@ -122,6 +123,14 @@ export const AppRouter: React.FC = () => {
                 element={
                   <ProtectedRoute>
                     <GroupTutorRequestsPage />
+                  </ProtectedRoute>
+                } 
+              />
+              <Route 
+                path="/profile" 
+                element={
+                  <ProtectedRoute>
+                    <Profile />
                   </ProtectedRoute>
                 } 
               />

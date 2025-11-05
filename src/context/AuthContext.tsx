@@ -243,7 +243,16 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
           console.log('Auth state changed:', event);
 
-          // Actualizar estado cuando cambia la autenticación
+          // Para USER_UPDATED, solo actualizar el user sin hacer fetch completo del perfil
+          // porque ya lo estamos actualizando en updateProfile
+          if (event === 'USER_UPDATED' && newSession?.user) {
+            console.log('USER_UPDATED: Actualizando solo user sin recargar perfil');
+            setUser(newSession.user);
+            setSession(newSession);
+            return;
+          }
+
+          // Para otros eventos, actualizar estado completo
           await updateAuthState(newSession);
 
           // Limpiar error cuando hay una sesión válida
@@ -385,30 +394,121 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
     setLoading(true);
     try {
-      const { error: updateError } = await supabase.rpc('update_current_user_profile', {
+      // Log de los datos que se van a actualizar
+      console.log('=== Actualizando perfil ===');
+      console.log('Updates recibidos:', updates);
+      console.log('User metadata actual:', user.user_metadata);
+      console.log('User identities actual:', user.identities);
+      
+      const updateParams = {
         new_first_name: updates.firstName || null,
         new_last_name: updates.lastName || null,
         new_bio: updates.bio || null,
         new_avatar_url: updates.avatarUrl || null,
-      });
+      };
+      
+      console.log('Parámetros enviados a RPC:', updateParams);
+
+      // Paso 1: Actualizar perfil en la base de datos
+      const { error: updateError, data } = await supabase.rpc('update_current_user_profile', updateParams);
+
+      console.log('Respuesta RPC:', { error: updateError, data });
 
       if (updateError) {
+        console.error('Error en RPC update_current_user_profile:', updateError);
         setError('Error updating profile');
         return { error: updateError };
       }
 
-      // Actualizar el estado local del perfil
+      // Paso 2: Actualizar user_metadata en Supabase Auth
+      const currentMetadata = user.user_metadata || {};
+      
+      // Usar valores actualizados o mantener los existentes
+      const updatedFirstName = updates.firstName !== undefined ? updates.firstName : profile?.first_name || currentMetadata.first_name || '';
+      const updatedLastName = updates.lastName !== undefined ? updates.lastName : profile?.last_name || currentMetadata.last_name || '';
+      const updatedFullName = (updatedFirstName && updatedLastName) 
+        ? `${updatedFirstName} ${updatedLastName}`.trim()
+        : '';
+      
+      const newMetadata = {
+        ...currentMetadata,
+        first_name: updatedFirstName,
+        last_name: updatedLastName,
+        full_name: updatedFullName || currentMetadata.full_name || '',
+        display_name: updatedFullName || currentMetadata.display_name || currentMetadata.full_name || '',
+      };
+
+      console.log('Actualizando user_metadata:', newMetadata);
+      console.log('Valores calculados - firstName:', updatedFirstName, 'lastName:', updatedLastName, 'display_name:', newMetadata.display_name);
+      
+      const { data: authUpdateData, error: authUpdateError } = await supabase.auth.updateUser({
+        data: newMetadata
+      });
+
+      console.log('Respuesta updateUser:', { error: authUpdateError, data: authUpdateData });
+
+      if (authUpdateError) {
+        console.error('Error actualizando user_metadata:', authUpdateError);
+        // No retornar error aquí, el perfil ya se actualizó en BD
+      } else {
+        console.log('User metadata actualizado correctamente');
+        console.log('Nuevo user metadata:', authUpdateData.user?.user_metadata);
+        
+        // Actualizar el estado local del user
+        if (authUpdateData.user) {
+          setUser(authUpdateData.user);
+        }
+      }
+
+      // Paso 3: Actualizar el estado local del perfil directamente
+      const updatedUser = authUpdateData?.user || user;
+      
+      // Usar los valores actualizados para el perfil
+      const finalFirstName = updates.firstName !== undefined ? updates.firstName : (profile?.first_name || updatedFirstName);
+      const finalLastName = updates.lastName !== undefined ? updates.lastName : (profile?.last_name || updatedLastName);
+      const finalBio = updates.bio !== undefined ? updates.bio : profile?.bio;
+      const finalAvatarUrl = updates.avatarUrl !== undefined ? updates.avatarUrl : profile?.avatar_url;
+      
       setProfile((prev) => {
-        if (!prev) return prev;
+        if (!prev) {
+          // Si no hay perfil previo, crear uno desde los datos actualizados
+          return {
+            id: updatedUser.id,
+            email: updatedUser.email || '',
+            first_name: finalFirstName || null,
+            last_name: finalLastName || null,
+            full_name: (finalFirstName && finalLastName) ? `${finalFirstName} ${finalLastName}`.trim() : null,
+            display_name: (finalFirstName && finalLastName) ? `${finalFirstName} ${finalLastName}`.trim() : null,
+            avatar_url: finalAvatarUrl || null,
+            bio: finalBio || null,
+            role: 'member',
+            created_at: new Date().toISOString(),
+            updated_at: new Date().toISOString(),
+          } as UserProfile;
+        }
         return {
           ...prev,
-          first_name: updates.firstName !== undefined ? updates.firstName : prev.first_name,
-          last_name: updates.lastName !== undefined ? updates.lastName : prev.last_name,
-          bio: updates.bio !== undefined ? updates.bio : prev.bio,
-          avatar_url: updates.avatarUrl !== undefined ? updates.avatarUrl : prev.avatar_url,
+          first_name: finalFirstName || prev.first_name,
+          last_name: finalLastName || prev.last_name,
+          bio: finalBio !== undefined ? finalBio : prev.bio,
+          avatar_url: finalAvatarUrl !== undefined ? finalAvatarUrl : prev.avatar_url,
+          full_name: (finalFirstName && finalLastName) ? `${finalFirstName} ${finalLastName}`.trim() : prev.full_name,
         };
       });
 
+      // Obtener usuario final para logs
+      const { data: { user: finalUser } } = await supabase.auth.getUser();
+      console.log('Usuario final:', finalUser);
+      console.log('User metadata después de actualizar:', finalUser?.user_metadata);
+      console.log('User identities después de actualizar:', finalUser?.identities);
+      console.log('Perfil en estado local después de actualizar:', {
+        first_name: finalFirstName,
+        last_name: finalLastName,
+        bio: finalBio,
+        avatar_url: finalAvatarUrl,
+      });
+
+      console.log('=== Perfil actualizado correctamente ===');
       return { error: null };
     } catch (err) {
       console.error('Error updating profile:', err);
