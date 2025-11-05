@@ -222,7 +222,7 @@ export const GroupTutorRequestsPage: React.FC = () => {
         <Card className="p-8 text-center">
           <p className="text-white">ID de grupo inválido.</p>
           <div className="mt-4">
-            <Link to="/dashboard">
+            <Link to="/my-groups">
               <Button variant="secondary">Volver</Button>
             </Link>
           </div>
@@ -282,8 +282,8 @@ export const GroupTutorRequestsPage: React.FC = () => {
           </div>
           <div className="mt-4 flex gap-3 justify-center">
             <Button variant="secondary" onClick={() => { fetchRequests(); fetchGroup(); }}>Actualizar</Button>
-            <Link to="/dashboard">
-              <Button variant="secondary">Volver al Dashboard</Button>
+            <Link to="/my-groups">
+              <Button variant="secondary">Volver a Mis Grupos</Button>
             </Link>
           </div>
         </div>

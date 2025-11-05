@@ -25,6 +25,16 @@ interface StudyGroup {
   created_at?: string;
 }
 
+type GroupRequest = {
+  id: number;
+  idGroup: number;
+  idTutor: string;
+  tutorName?: string;
+  tutor_name?: string;
+  createdAt: string;
+  created_at?: string;
+};
+
 // Helpers de estilo para etiquetas (mismos colores que antes)
 const getSessionTypeDisplay = (type?: string) => {
   const t = (type || '').toLowerCase();
@@ -43,46 +53,54 @@ export const MyStudyGroupsPage: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [detailsGroup, setDetailsGroup] = useState<StudyGroup | null>(null);
+  const [requestsGroup, setRequestsGroup] = useState<StudyGroup | null>(null);
+  const [requests, setRequests] = useState<GroupRequest[]>([]);
+  const [loadingRequests, setLoadingRequests] = useState(false);
+  const [requestError, setRequestError] = useState<string | null>(null);
+  const [deletingRequestId, setDeletingRequestId] = useState<number | null>(null);
+  const [acceptingRequestId, setAcceptingRequestId] = useState<number | null>(null);
+  const [groupInfo, setGroupInfo] = useState<{ tutorId: string | number | null; tutorName: string | null }>({ tutorId: null, tutorName: null });
+
+  // Función para cargar grupos (extraída del useEffect)
+  const fetchMyGroups = async () => {
+    try {
+      setLoading(true);
+      const tokenKey = 'sb-zskuikxfcjobpygoueqp-auth-token';
+      const tokenData = localStorage.getItem(tokenKey);
+      
+      if (!tokenData) {
+        setError('Debes iniciar sesión');
+        setLoading(false);
+        return;
+      }
+
+      const authData = JSON.parse(tokenData);
+      const accessToken = authData.access_token;
+
+      console.log('📚 Cargando mis grupos...');
+
+      const response = await fetch('http://localhost:8080/api/study-groups/my-groups', {
+        headers: {
+          'Authorization': `Bearer ${accessToken}`
+        }
+      });
+
+      if (!response.ok) {
+        throw new Error('Error cargando tus grupos');
+      }
+
+      const groups = await response.json();
+      console.log('✅ Grupos cargados:', groups);
+      setMyGroups(groups);
+    } catch (err: any) {
+      console.error('❌ Error:', err);
+      setError(err.message);
+    } finally {
+      setLoading(false);
+    }
+  };
 
   useEffect(() => {
-    const fetchMyGroups = async () => {
-      try {
-        setLoading(true);
-        const tokenKey = 'sb-zskuikxfcjobpygoueqp-auth-token';
-        const tokenData = localStorage.getItem(tokenKey);
-        
-        if (!tokenData) {
-          setError('Debes iniciar sesión');
-          setLoading(false);
-          return;
-        }
-
-        const authData = JSON.parse(tokenData);
-        const accessToken = authData.access_token;
-
-        console.log('📚 Cargando mis grupos...');
-
-        const response = await fetch('http://localhost:8080/api/study-groups/my-groups', {
-          headers: {
-            'Authorization': `Bearer ${accessToken}`
-          }
-        });
-
-        if (!response.ok) {
-          throw new Error('Error cargando tus grupos');
-        }
-
-        const groups = await response.json();
-        console.log('✅ Grupos cargados:', groups);
-        setMyGroups(groups);
-      } catch (err: any) {
-        console.error('❌ Error:', err);
-        setError(err.message);
-      } finally {
-        setLoading(false);
-      }
-    };
-
     if (user) {
       fetchMyGroups();
     }
@@ -129,6 +147,148 @@ export const MyStudyGroupsPage: React.FC = () => {
 
   const openDetails = (g: StudyGroup) => setDetailsGroup(g);
   const closeDetails = () => setDetailsGroup(null);
+
+  const openRequests = async (g: StudyGroup) => {
+    setRequestsGroup(g);
+    setLoadingRequests(true);
+    setRequestError(null);
+    try {
+      const token = getAccessToken();
+      
+      // Cargar info del grupo
+      const groupRes = await fetch(`http://localhost:8080/api/groups/${g.id}`, {
+        headers: {
+          Accept: 'application/json',
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
+      });
+      if (groupRes.ok) {
+        const groupData = await groupRes.json();
+        setGroupInfo({
+          tutorId: groupData?.tutorId ?? groupData?.tutor_id ?? null,
+          tutorName: groupData?.tutorName ?? groupData?.tutor_name ?? null,
+        });
+      }
+      
+      // Cargar solicitudes
+      const res = await fetch(`http://localhost:8080/api/group-requests/group/${g.id}`, {
+        headers: {
+          Accept: 'application/json',
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
+      });
+      if (!res.ok) {
+        const txt = await res.text().catch(() => '');
+        throw new Error(txt || `Error ${res.status}`);
+      }
+      const data: GroupRequest[] = await res.json();
+      setRequests(data);
+    } catch (e: any) {
+      setRequestError(e?.message || 'No se pudieron cargar las solicitudes');
+      setRequests([]);
+    } finally {
+      setLoadingRequests(false);
+    }
+  };
+
+  const closeRequests = () => {
+    setRequestsGroup(null);
+    setRequests([]);
+    setRequestError(null);
+    setGroupInfo({ tutorId: null, tutorName: null });
+  };
+
+  const deleteRequest = async (id: number) => {
+    try {
+      setDeletingRequestId(id);
+      const token = getAccessToken();
+      const res = await fetch(`http://localhost:8080/api/group-requests/${id}`, {
+        method: 'DELETE',
+        headers: {
+          Accept: 'application/json',
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
+      });
+      if (!res.ok) {
+        const txt = await res.text().catch(() => '');
+        throw new Error(txt || `Error ${res.status}`);
+      }
+      // Recargar solicitudes
+      if (requestsGroup) {
+        await openRequests(requestsGroup);
+      }
+    } catch (e: any) {
+      alert(e?.message || 'No se pudo eliminar la solicitud');
+    } finally {
+      setDeletingRequestId(null);
+    }
+  };
+
+  const acceptRequest = async (requestId: number, tutorId: string, tutorName: string | null) => {
+    try {
+      const hasTutorAssigned = !!(groupInfo.tutorId !== null && String(groupInfo.tutorId).trim().length > 0);
+      if (hasTutorAssigned) {
+        alert('Este grupo ya tiene un tutor asignado. Elimina el actual antes de asignar otro.');
+        return;
+      }
+      setAcceptingRequestId(requestId);
+      const token = getAccessToken();
+
+      // Asignar tutor
+      const trimmed = String(tutorId ?? '').trim();
+      const maybeNum = Number(trimmed);
+      const normalizedId: string | number = Number.isFinite(maybeNum) && trimmed !== '' ? maybeNum : trimmed;
+      const payload = {
+        tutorId: normalizedId,
+        tutorName,
+        tutor_id: normalizedId,
+        tutor_name: tutorName,
+      };
+      const assignRes = await fetch(`http://localhost:8080/api/groups/${requestsGroup!.id}/assign-tutor`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          Accept: 'application/json',
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
+        body: JSON.stringify(payload),
+      });
+      if (!assignRes.ok) {
+        const txt = await assignRes.text().catch(() => '');
+        throw new Error(txt || `Error ${assignRes.status} al asignar tutor`);
+      }
+
+      // Eliminar la solicitud aceptada
+      await fetch(`http://localhost:8080/api/group-requests/${requestId}`, {
+        method: 'DELETE',
+        headers: {
+          Accept: 'application/json',
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
+      });
+
+      alert(`✅ Tutor ${tutorName || tutorId} asignado correctamente`);
+      // Recargar solicitudes y grupos
+      if (requestsGroup) {
+        await openRequests(requestsGroup);
+      }
+      await fetchMyGroups();
+    } catch (e: any) {
+      console.error('❌ Error al aceptar solicitud:', e);
+      alert(`❌ ${e?.message || 'No se pudo aceptar la solicitud'}`);
+    } finally {
+      setAcceptingRequestId(null);
+    }
+  };
+
+  const getAccessToken = (): string | null => {
+    try {
+      const raw = localStorage.getItem('sb-zskuikxfcjobpygoueqp-auth-token');
+      return raw ? JSON.parse(raw).access_token : null;
+    } catch {
+      return null;
+    }
+  };
 
   const formatTime = (time?: string | null) => {
     if (!time) return 'Por definir';
@@ -270,29 +430,28 @@ export const MyStudyGroupsPage: React.FC = () => {
                       </button>
 
                       {/* Ver solicitudes (icon-only) */}
-                      <Link to={`/groups/${group.id}/requests`}>
-                        <button
-                          className="h-10 w-10 rounded-lg bg-neutral-800 hover:bg-neutral-700 text-neutral-200 hover:text-white border border-neutral-700 flex items-center justify-center transition-colors"
-                          title="Ver solicitudes de tutor"
-                          aria-label="Ver solicitudes de tutor"
+                      <button
+                        onClick={() => openRequests(group)}
+                        className="h-10 w-10 rounded-lg bg-neutral-800 hover:bg-neutral-700 text-neutral-200 hover:text-white border border-neutral-700 flex items-center justify-center transition-colors"
+                        title="Ver solicitudes de tutor"
+                        aria-label="Ver solicitudes de tutor"
+                      >
+                        <svg 
+                          xmlns="http://www.w3.org/2000/svg" 
+                          className="h-5 w-5" 
+                          fill="none" 
+                          viewBox="0 0 24 24" 
+                          stroke="currentColor"
                         >
-                          <svg 
-                            xmlns="http://www.w3.org/2000/svg" 
-                            className="h-5 w-5" 
-                            fill="none" 
-                            viewBox="0 0 24 24" 
-                            stroke="currentColor"
-                          >
-                            <path 
-                              strokeLinecap="round" 
-                              strokeLinejoin="round" 
-                              strokeWidth={2} 
-                              d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-3 7h3m-3 4h3m-6-4h.01M9 16h.01" 
-                            />
-                          </svg>
-                          <span className="sr-only">Ver solicitudes de tutor</span>
-                        </button>
-                      </Link>
+                          <path 
+                            strokeLinecap="round" 
+                            strokeLinejoin="round" 
+                            strokeWidth={2} 
+                            d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-3 7h3m-3 4h3m-6-4h.01M9 16h.01" 
+                          />
+                        </svg>
+                        <span className="sr-only">Ver solicitudes de tutor</span>
+                      </button>
                     </div>
  
                      <Button
@@ -438,6 +597,100 @@ export const MyStudyGroupsPage: React.FC = () => {
               >
                 Cerrar
               </button>
+            </div>
+          </div>
+        </div>,
+        document.body
+      )}
+
+      {/* Modal de solicitudes de tutor */}
+      {requestsGroup && createPortal(
+        <div className="fixed inset-0 z-[1000] flex items-center justify-center p-4 overflow-y-auto" role="dialog" aria-modal="true">
+          <div className="absolute inset-0 bg-black/60" onClick={closeRequests} />
+          <div className="relative w-full max-w-4xl rounded-lg bg-neutral-900 border border-neutral-700 shadow-xl my-8">
+            <div className="p-6">
+              <div className="flex items-start justify-between mb-4">
+                <div>
+                  <h3 className="text-xl font-semibold text-white">Solicitudes de Tutor</h3>
+                  <p className="text-sm text-neutral-400 mt-1">{requestsGroup.name}</p>
+                  {groupInfo.tutorId && (
+                    <div className="mt-2 inline-flex items-center gap-2 rounded-md bg-neutral-800 border border-neutral-700 px-3 py-1">
+                      <span className="text-xs text-neutral-300">Tutor asignado:</span>
+                      <span className="text-xs font-semibold text-white">{groupInfo.tutorName || 'Sin nombre'}</span>
+                    </div>
+                  )}
+                </div>
+                <button onClick={closeRequests} className="text-neutral-400 hover:text-white" aria-label="Cerrar" title="Cerrar">✕</button>
+              </div>
++
+              {loadingRequests ? (
+                <div className="py-12 text-center">
+                  <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-red-500 mx-auto mb-2" />
+                  <p className="text-neutral-400 text-sm">Cargando solicitudes...</p>
+                </div>
+              ) : requestError ? (
+                <div className="py-8 text-center">
+                  <p className="text-red-400 text-sm">{requestError}</p>
+                </div>
+              ) : (
+                <div className="overflow-x-auto">
+                  <table className="min-w-full divide-y divide-neutral-800">
+                    <thead className="bg-neutral-800">
+                      <tr>
+                        <th className="px-4 py-3 text-left text-xs font-semibold text-neutral-300 uppercase">Tutor</th>
+                        <th className="px-4 py-3 text-left text-xs font-semibold text-neutral-300 uppercase">Fecha</th>
+                        <th className="px-4 py-3 text-right text-xs font-semibold text-neutral-300 uppercase">Acciones</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-neutral-800">
+                      {requests.map((r) => (
+                        <tr key={r.id} className="hover:bg-neutral-800/40">
+                          <td className="px-4 py-3">
+                            {(r.tutorName || r.tutor_name) ? (
+                              <div>
+                                <div className="font-semibold text-white text-sm">{r.tutorName || r.tutor_name}</div>
+                                <div className="text-xs text-neutral-500 truncate max-w-[200px]" title={r.idTutor}>
+                                  ID: {String(r.idTutor).substring(0, 8)}...
+                                </div>
+                              </div>
+                            ) : (
+                              <span className="text-neutral-400 text-xs break-all">{r.idTutor}</span>
+                            )}
+                          </td>
+                          <td className="px-4 py-3 text-sm text-neutral-300">
+                            {(r.createdAt || r.created_at) ? new Date(r.createdAt || r.created_at!).toLocaleString('es-ES') : '-'}
+                          </td>
+                          <td className="px-4 py-3 text-right">
+                            <div className="flex gap-2 justify-end">
+                              <button
+                                onClick={() => acceptRequest(r.id, String(r.idTutor), r.tutorName || r.tutor_name || null)}
+                                disabled={!!groupInfo.tutorId || acceptingRequestId === r.id || deletingRequestId === r.id}
+                                className="px-3 py-1 text-xs rounded bg-red-600 hover:bg-red-700 text-white disabled:opacity-50 disabled:cursor-not-allowed"
+                              >
+                                {acceptingRequestId === r.id ? 'Aceptando…' : 'Aceptar'}
+                              </button>
+                              <button
+                                onClick={() => deleteRequest(r.id)}
+                                disabled={deletingRequestId === r.id || acceptingRequestId === r.id}
+                                className="px-3 py-1 text-xs rounded bg-neutral-700 hover:bg-neutral-600 text-neutral-200 disabled:opacity-50 disabled:cursor-not-allowed"
+                              >
+                                {deletingRequestId === r.id ? 'Eliminando…' : 'Eliminar'}
+                              </button>
+                            </div>
+                          </td>
+                        </tr>
+                      ))}
+                      {requests.length === 0 && (
+                        <tr>
+                          <td colSpan={3} className="px-4 py-8 text-center text-neutral-400 text-sm">
+                            No hay solicitudes para este grupo.
+                          </td>
+                        </tr>
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+              )}
             </div>
           </div>
         </div>,
