@@ -16,6 +16,7 @@ import { MyStudyGroupsPage } from '../pages/MyStudyGroupsPage';
 import NewRequest from '../pages/NewRequest';
 import { ApplyToGroupPage } from '../pages/ApplyToGroupPage';
 import { GroupTutorRequestsPage } from '../pages/GroupTutorRequestsPage';
+import { NotFound } from '../pages/NotFound';
 
 export const AppRouter: React.FC = () => {
   return (
@@ -124,6 +125,9 @@ export const AppRouter: React.FC = () => {
                   </ProtectedRoute>
                 } 
               />
+              
+              {/* Ruta catch-all para páginas no encontradas */}
+              <Route path="*" element={<NotFound />} />
             </Routes>
           </main>
           <Footer />
