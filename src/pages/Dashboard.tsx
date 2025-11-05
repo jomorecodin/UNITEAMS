@@ -153,19 +153,36 @@ export const Dashboard: React.FC = () => {
     }
   }, [user]);
 
-  // ✅ Generar calendario de 2 semanas
-  const generateTwoWeekCalendar = () => {
+  // ✅ Generar calendario de 1 semana
+  const generateWeekCalendar = () => {
     const days = [];
     const startDate = new Date(currentWeekStart);
     startDate.setDate(startDate.getDate() - startDate.getDay() + 1); // Empezar en lunes
     
-    for (let i = 0; i < 14; i++) {
+    for (let i = 0; i < 7; i++) {
       const date = new Date(startDate);
       date.setDate(startDate.getDate() + i);
       days.push(date);
     }
     
     return days;
+  };
+
+  // ✅ Obtener próximas sesiones ordenadas
+  const getUpcomingSessions = () => {
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    
+    return studySessions
+      .filter(session => {
+        if (session.session_type === 'examen' && session.meeting_date) {
+          return new Date(session.meeting_date) >= today;
+        } else if (session.session_type === 'seguimiento') {
+          return true; // Las sesiones de seguimiento son recurrentes
+        }
+        return false;
+      })
+      .slice(0, 5); // Solo las próximas 5
   };
 
   // ✅ Obtener sesiones para un día específico
@@ -182,6 +199,11 @@ export const Dashboard: React.FC = () => {
         return session.meeting_date === dateString;
       }
     });
+  };
+
+  // ✅ Formatear fecha corta
+  const formatShortDate = (date: Date) => {
+    return date.toLocaleDateString('es-ES', { day: 'numeric', month: 'short' });
   };
 
   // ✅ Formatear hora para display
@@ -235,17 +257,29 @@ export const Dashboard: React.FC = () => {
   const getMonthYearDisplay = () => {
     const start = new Date(currentWeekStart);
     start.setDate(start.getDate() - start.getDay() + 1); // Empezar en lunes
-    const end = new Date(start);
-    end.setDate(end.getDate() + 13);
     
-    const startMonth = start.toLocaleDateString('es-ES', { month: 'long' });
-    const endMonth = end.toLocaleDateString('es-ES', { month: 'long' });
+    const month = start.toLocaleDateString('es-ES', { month: 'long' });
     const year = start.getFullYear();
     
+    return `${month.charAt(0).toUpperCase() + month.slice(1)} ${year}`;
+  };
+
+  // ✅ Obtener rango de fechas de la semana
+  const getWeekRange = () => {
+    const start = new Date(currentWeekStart);
+    start.setDate(start.getDate() - start.getDay() + 1); // Empezar en lunes
+    const end = new Date(start);
+    end.setDate(end.getDate() + 6);
+    
+    const startDay = start.getDate();
+    const endDay = end.getDate();
+    const startMonth = start.toLocaleDateString('es-ES', { month: 'short' });
+    const endMonth = end.toLocaleDateString('es-ES', { month: 'short' });
+    
     if (startMonth === endMonth) {
-      return `${startMonth.charAt(0).toUpperCase() + startMonth.slice(1)} ${year}`;
+      return `${startDay} - ${endDay} ${startMonth}`;
     } else {
-      return `${startMonth.charAt(0).toUpperCase() + startMonth.slice(1)} - ${endMonth.charAt(0).toUpperCase() + endMonth.slice(1)} ${year}`;
+      return `${startDay} ${startMonth} - ${endDay} ${endMonth}`;
     }
   };
 
@@ -271,207 +305,212 @@ export const Dashboard: React.FC = () => {
     );
   }
 
-  const calendarDays = generateTwoWeekCalendar();
+  const calendarDays = generateWeekCalendar();
+  const upcomingSessions = getUpcomingSessions();
 
-  // Nombre para saludo (sin fallback al correo)
-  const getFirstName = (p?: any): string => {
-    const pick = (s?: string) => (typeof s === 'string' ? s.trim() : '');
-    const fromDisplay = pick(p?.display_name)?.split(/\s+/)[0] || '';
-    const fromFull = pick(p?.full_name)?.split(/\s+/)[0] || '';
-    return pick(p?.first_name) || fromDisplay || fromFull || 'Usuario';
+  // Obtener nombre completo para el saludo
+  const getUserDisplayName = (): string => {
+    if (profile?.first_name || profile?.last_name) {
+      const firstName = profile.first_name?.trim() || '';
+      const lastName = profile.last_name?.trim() || '';
+      
+      if (firstName && lastName) {
+        return `${firstName} ${lastName}`;
+      }
+      if (firstName) {
+        return firstName;
+      }
+      if (lastName) {
+        return lastName;
+      }
+    }
+    return 'Usuario';
   };
-  const firstName = getFirstName(profile);
+
+  const displayName = getUserDisplayName();
 
   return (
     <div className="min-h-screen bg-black px-4 sm:px-6 lg:px-8" style={{ paddingTop: '5rem', paddingBottom: '3rem' }}>
       <div className="max-w-7xl mx-auto">
         {/* Header de bienvenida */}
-        <div className="text-center mb-12">
-          <h1 className="text-4xl font-bold text-white mb-4">
-            Bienvenido a tu Panel
-          </h1>
-          <p className="text-neutral-400 text-lg">
-            Hola, {firstName}! Este es tu espacio personal de trabajo.
-          </p>
-          
-          {profile && (
-            <div className="mt-4 text-sm text-neutral-500">
-              <p>Correo: {profile.email}</p>
-              {profile.first_name && profile.last_name && (
-                <p>Nombre completo: {profile.first_name} {profile.last_name}</p>
-              )}
-              <p>Rol: {profile.role}</p>
-              <p>Miembro desde: {new Date(profile.created_at).toLocaleDateString()}</p>
+        <h1 className="text-3xl sm:text-4xl font-bold text-white mb-8 pt-8 pb-6">
+          Bienvenido {displayName}
+        </h1>
+        {/* Calendario rediseñado */}
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-8">
+          {/* Calendario semanal compacto */}
+          <Card className="lg:col-span-2 p-4 sm:p-6">
+            <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between mb-6 gap-4">
+              <div className="flex-1">
+                <h2 className="text-xl font-bold text-white mb-1">
+                  Calendario Semanal
+                </h2>
+                <div className="flex flex-wrap items-center gap-2 text-sm text-neutral-400">
+                  <span>{getMonthYearDisplay()}</span>
+                  <span className="text-neutral-600">•</span>
+                  <span>{getWeekRange()}</span>
+                </div>
+              </div>
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={goToPreviousWeek}
+                  className="flex items-center justify-center w-10 h-10 rounded-lg bg-neutral-800 hover:bg-neutral-700 text-neutral-300 hover:text-white transition-all duration-200 border border-neutral-700 hover:border-neutral-600 cursor-pointer"
+                  aria-label="Semana anterior"
+                  title="Semana anterior"
+                >
+                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+                  </svg>
+                </button>
+                <button
+                  onClick={goToToday}
+                  className="px-4 py-2 rounded-lg bg-neutral-800 hover:bg-red-500/20 text-neutral-300 hover:text-red-400 transition-all duration-200 border border-neutral-700 hover:border-red-500/30 text-sm font-medium cursor-pointer"
+                  aria-label="Ir a hoy"
+                  title="Ir a hoy"
+                >
+                  Hoy
+                </button>
+                <button
+                  onClick={goToNextWeek}
+                  className="flex items-center justify-center w-10 h-10 rounded-lg bg-neutral-800 hover:bg-neutral-700 text-neutral-300 hover:text-white transition-all duration-200 border border-neutral-700 hover:border-neutral-600 cursor-pointer"
+                  aria-label="Semana siguiente"
+                  title="Semana siguiente"
+                >
+                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                  </svg>
+                </button>
+              </div>
             </div>
-          )}
-        </div>
-        {/* ✅ NUEVO: Calendario de 2 semanas */}
-        <Card className="p-6 mb-8">
-          <div className="flex flex-col lg:flex-row justify-between items-start lg:items-center mb-6 gap-4">
-            <div>
-              <h2 className="text-2xl font-bold text-white mb-2">
-                Mi Calendario de Estudio
-              </h2>
-              <p className="text-neutral-400">
-                {getMonthYearDisplay()} - Próximas 2 semanas
-              </p>
-            </div>
-            <div className="flex gap-2 flex-wrap">
-              <Button variant="secondary" onClick={goToPreviousWeek} className="px-3 py-2 text-sm">
-                ‹ Anterior
-              </Button>
-              <Button variant="secondary" onClick={goToToday} className="px-3 py-2 text-sm">
-                Hoy
-              </Button>
-              <Button variant="secondary" onClick={goToNextWeek} className="px-3 py-2 text-sm">
-                Siguiente ›
-              </Button>
-            </div>
-          </div>
 
-          {calendarLoading ? (
-            <div className="text-center py-8">
-              <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-red-500 mx-auto mb-4"></div>
-              <p className="text-neutral-400">Cargando calendario...</p>
-            </div>
-          ) : (
-            <div className="overflow-x-auto">
-              <div className="grid grid-cols-7 min-w-[800px] gap-2">
+            {calendarLoading ? (
+              <div className="text-center py-12">
+                <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-red-500 mx-auto mb-2"></div>
+                <p className="text-sm text-neutral-400">Cargando...</p>
+              </div>
+            ) : (
+              <div className="grid grid-cols-7 gap-2">
                 {/* Encabezados de días */}
-                {calendarDays.slice(0, 7).map((date, index) => (
-                  <div key={index} className="text-center p-2">
-                    <div className="text-white font-semibold text-sm">
-                      {date.toLocaleDateString('es-ES', { weekday: 'short' })}
-                    </div>
-                    <div className={`text-sm ${
-                      date.toDateString() === new Date().toDateString() 
-                        ? 'bg-red-500 text-white rounded-full w-8 h-8 flex items-center justify-center mx-auto'
-                        : 'text-neutral-400'
-                    }`}>
-                      {date.getDate()}
-                    </div>
-                  </div>
-                ))}
-
-                {/* Sesiones por día - Semana 1 */}
-                {calendarDays.slice(0, 7).map((date, dayIndex) => {
+                {calendarDays.map((date) => {
+                  const isToday = date.toDateString() === new Date().toDateString();
                   const daySessions = getSessionsForDay(date);
                   return (
-                    <div key={dayIndex} className="min-h-[200px] border border-neutral-700 rounded-lg p-2 bg-neutral-900/50">
-                      {daySessions.length === 0 ? (
-                        <div className="text-center text-neutral-500 text-sm h-full flex items-center justify-center">
-                          Sin sesiones
+                    <div key={date.toDateString()} className="flex flex-col">
+                      {/* Header del día */}
+                      <div className={`text-center p-2 rounded-t-lg ${
+                        isToday ? 'bg-red-500/20' : 'bg-neutral-800/50'
+                      }`}>
+                        <div className="text-xs text-neutral-400 uppercase mb-1">
+                          {date.toLocaleDateString('es-ES', { weekday: 'short' })}
                         </div>
-                      ) : (
-                        <div className="space-y-2">
-                          {daySessions.map((session, sessionIndex) => (
-                            <div
-                              key={sessionIndex}
-                              className={`p-2 rounded text-xs ${
-                                session.session_type === 'examen' 
-                                  ? 'bg-red-500/20 border border-red-500/30' 
-                                  : 'bg-blue-500/20 border border-blue-500/30'
-                              }`}
-                            >
-                              <div className="font-semibold text-white truncate">
-                                {session.name}
-                              </div>
-                              <div className="text-neutral-300">
-                                {formatTimeDisplay(session.meeting_time)}
-                              </div>
-                              <div className="text-neutral-400 truncate">
-                                {session.subject}
-                              </div>
-                              {session.session_type === 'examen' && (
-                                <div className="text-red-400 text-xs mt-1">
-                                  📝 Examen
+                        <div className={`text-lg font-bold ${
+                          isToday ? 'text-red-400' : 'text-white'
+                        }`}>
+                          {date.getDate()}
+                        </div>
+                      </div>
+                      {/* Sesiones del día */}
+                      <div className={`rounded-b-lg p-2 min-h-[100px] ${
+                        isToday ? 'bg-neutral-900/50 border border-red-500/30' : 'bg-neutral-900/30'
+                      }`}>
+                        {daySessions.length === 0 ? (
+                          <div className="text-xs text-neutral-600 text-center pt-2">
+                            —
+                          </div>
+                        ) : (
+                          <div className="space-y-1.5">
+                            {daySessions.slice(0, 2).map((session, idx) => (
+                              <div
+                                key={idx}
+                                className={`text-xs p-1.5 rounded ${
+                                  session.session_type === 'examen'
+                                    ? 'bg-red-500/20 border border-red-500/30'
+                                    : 'bg-blue-500/20 border border-blue-500/30'
+                                }`}
+                              >
+                                <div className="font-semibold text-white truncate mb-0.5">
+                                  {session.name}
                                 </div>
-                              )}
-                            </div>
-                          ))}
-                        </div>
-                      )}
-                    </div>
-                  );
-                })}
-
-                {/* Encabezados de días - Semana 2 */}
-                {calendarDays.slice(7, 14).map((date, index) => (
-                  <div key={index + 7} className="text-center p-2">
-                    <div className="text-white font-semibold text-sm">
-                      {date.toLocaleDateString('es-ES', { weekday: 'short' })}
-                    </div>
-                    <div className={`text-sm ${
-                      date.toDateString() === new Date().toDateString() 
-                        ? 'bg-red-500 text-white rounded-full w-8 h-8 flex items-center justify-center mx-auto'
-                        : 'text-neutral-400'
-                    }`}>
-                      {date.getDate()}
-                    </div>
-                  </div>
-                ))}
-
-                {/* Sesiones por día - Semana 2 */}
-                {calendarDays.slice(7, 14).map((date, dayIndex) => {
-                  const daySessions = getSessionsForDay(date);
-                  return (
-                    <div key={dayIndex + 7} className="min-h-[200px] border border-neutral-700 rounded-lg p-2 bg-neutral-900/50">
-                      {daySessions.length === 0 ? (
-                        <div className="text-center text-neutral-500 text-sm h-full flex items-center justify-center">
-                          Sin sesiones
-                        </div>
-                      ) : (
-                        <div className="space-y-2">
-                          {daySessions.map((session, sessionIndex) => (
-                            <div
-                              key={sessionIndex}
-                              className={`p-2 rounded text-xs ${
-                                session.session_type === 'examen' 
-                                  ? 'bg-red-500/20 border border-red-500/30' 
-                                  : 'bg-blue-500/20 border border-blue-500/30'
-                              }`}
-                            >
-                              <div className="font-semibold text-white truncate">
-                                {session.name}
-                              </div>
-                              <div className="text-neutral-300">
-                                {formatTimeDisplay(session.meeting_time)}
-                              </div>
-                              <div className="text-neutral-400 truncate">
-                                {session.subject}
-                              </div>
-                              {session.session_type === 'examen' && (
-                                <div className="text-red-400 text-xs mt-1">
-                                  📝 Examen
+                                <div className="text-neutral-300">
+                                  {formatTimeDisplay(session.meeting_time)}
                                 </div>
-                              )}
-                            </div>
-                          ))}
-                        </div>
-                      )}
+                              </div>
+                            ))}
+                            {daySessions.length > 2 && (
+                              <div className="text-xs text-neutral-500 text-center">
+                                +{daySessions.length - 2}
+                              </div>
+                            )}
+                          </div>
+                        )}
+                      </div>
                     </div>
                   );
                 })}
               </div>
-            </div>
-          )}
+            )}
+          </Card>
 
-          {/* Leyenda */}
-          <div className="mt-4 flex flex-wrap gap-4 text-xs text-neutral-400">
-            <div className="flex items-center gap-2">
-              <div className="w-3 h-3 bg-blue-500/20 border border-blue-500/30 rounded"></div>
-              <span>Seguimiento</span>
-            </div>
-            <div className="flex items-center gap-2">
-              <div className="w-3 h-3 bg-red-500/20 border border-red-500/30 rounded"></div>
-              <span>Preparación Examen</span>
-            </div>
-            <div className="flex items-center gap-2">
-              <div className="w-3 h-3 bg-red-500 rounded-full"></div>
-              <span>Hoy</span>
-            </div>
-          </div>
-        </Card>
+          {/* Próximas sesiones */}
+          <Card className="p-4 sm:p-6">
+            <h2 className="text-xl font-bold text-white mb-4">
+              Próximas Sesiones
+            </h2>
+            {calendarLoading ? (
+              <div className="text-center py-8">
+                <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-red-500 mx-auto mb-2"></div>
+                <p className="text-sm text-neutral-400">Cargando...</p>
+              </div>
+            ) : upcomingSessions.length === 0 ? (
+              <div className="text-center py-8">
+                <p className="text-sm text-neutral-500">
+                  No hay sesiones próximas
+                </p>
+              </div>
+            ) : (
+              <div className="space-y-3">
+                {upcomingSessions.map((session, idx) => (
+                  <div
+                    key={idx}
+                    className={`p-3 rounded-lg border ${
+                      session.session_type === 'examen'
+                        ? 'bg-red-500/10 border-red-500/20'
+                        : 'bg-blue-500/10 border-blue-500/20'
+                    }`}
+                  >
+                    <div className="flex items-start justify-between mb-1">
+                      <div className="flex-1 min-w-0">
+                        <div className="font-semibold text-white text-sm truncate">
+                          {session.name}
+                        </div>
+                        <div className="text-xs text-neutral-400 mt-0.5">
+                          {session.subject}
+                        </div>
+                      </div>
+                    </div>
+                    <div className="flex items-center justify-between mt-2">
+                      <div className="text-xs text-neutral-300">
+                        {session.session_type === 'examen' && session.meeting_date
+                          ? formatShortDate(new Date(session.meeting_date))
+                          : session.meeting_day}
+                      </div>
+                      <div className="text-xs font-medium text-neutral-300">
+                        {formatTimeDisplay(session.meeting_time)}
+                      </div>
+                    </div>
+                    {session.session_type === 'examen' && (
+                      <div className="mt-2">
+                        <span className="text-xs px-2 py-0.5 bg-red-500/20 text-red-400 rounded">
+                          Examen
+                        </span>
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
+          </Card>
+        </div>
 
         {/* Cards de funcionalidades actualizadas */}
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 mb-8">
