@@ -56,6 +56,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   // Función para obtener el perfil del usuario
   const fetchUserProfile = useCallback(async (userId: string, currentUser?: User): Promise<UserProfile | null> => {
     try {
+      // Obtener nombres de user_metadata o identity_data PRIMERO (disponibles inmediatamente)
+      const userMetadata = currentUser?.user_metadata || {};
+      const identityData = currentUser?.identities?.[0]?.identity_data || {};
+      const metadataFirstName = userMetadata.first_name || identityData.first_name;
+      const metadataLastName = userMetadata.last_name || identityData.last_name;
+      const metadataEmail = currentUser?.email || '';
+
       // Intentar obtener el perfil de la base de datos
       const { data, error: profileError } = await supabase
         .from('user_profiles')
@@ -63,14 +70,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         .eq('id', userId)
         .single();
 
-      // Obtener nombres de user_metadata o identity_data como fallback
-      const userMetadata = currentUser?.user_metadata || {};
-      const identityData = currentUser?.identities?.[0]?.identity_data || {};
-      const metadataFirstName = userMetadata.first_name || identityData.first_name;
-      const metadataLastName = userMetadata.last_name || identityData.last_name;
-      const metadataEmail = currentUser?.email || '';
-
-      // Si hay error al obtener el perfil, crear uno temporal desde metadatos
+      // Si hay error al obtener el perfil, crear uno desde metadatos
       if (profileError) {
         if (metadataFirstName || metadataLastName || metadataEmail) {
           return {
@@ -94,42 +94,94 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         return null;
       }
 
-      // Si el perfil existe pero no tiene nombres, sincronizarlos desde metadatos
-      if (data && (metadataFirstName || metadataLastName)) {
-        const needsUpdate = (!data.first_name || !data.last_name) && (metadataFirstName || metadataLastName);
+      // Si el perfil existe pero no tiene nombres, usar metadatos
+      if (data) {
+        const firstName = data.first_name || metadataFirstName || null;
+        const lastName = data.last_name || metadataLastName || null;
         
-        if (needsUpdate) {
-          const firstName = metadataFirstName || data.first_name || '';
-          const lastName = metadataLastName || data.last_name || '';
-          
+        // Si el perfil en BD no tiene nombres pero los metadatos sí, actualizar la BD
+        if ((!data.first_name || !data.last_name) && (metadataFirstName || metadataLastName)) {
           try {
             await supabase.rpc('update_current_user_profile', {
               new_first_name: firstName || null,
               new_last_name: lastName || null,
             });
-            
-            return {
-              ...data,
-              first_name: firstName || data.first_name,
-              last_name: lastName || data.last_name,
-            } as UserProfile;
           } catch (updateError) {
             console.error('Error updating profile:', updateError);
-            // Devolver perfil con datos mezclados aunque falle la actualización
-            return {
-              ...data,
-              first_name: metadataFirstName || data.first_name,
-              last_name: metadataLastName || data.last_name,
-            } as UserProfile;
           }
         }
+        
+        // Siempre devolver el perfil con nombres completos (de BD o metadatos)
+        return {
+          ...data,
+          first_name: firstName,
+          last_name: lastName,
+        } as UserProfile;
       }
 
-      return data as UserProfile;
+      return null;
     } catch (err) {
       console.error('Error fetching profile:', err);
+      // Si hay error pero tenemos metadatos, crear perfil temporal
+      if (currentUser) {
+        const userMetadata = currentUser.user_metadata || {};
+        const identityData = currentUser.identities?.[0]?.identity_data || {};
+        const metadataFirstName = userMetadata.first_name || identityData.first_name;
+        const metadataLastName = userMetadata.last_name || identityData.last_name;
+        const metadataEmail = currentUser.email || '';
+        
+        if (metadataFirstName || metadataLastName || metadataEmail) {
+          return {
+            id: userId,
+            email: metadataEmail,
+            first_name: metadataFirstName || null,
+            last_name: metadataLastName || null,
+            full_name: metadataFirstName && metadataLastName 
+              ? `${metadataFirstName} ${metadataLastName}`.trim()
+              : metadataFirstName || metadataLastName || null,
+            display_name: metadataFirstName && metadataLastName 
+              ? `${metadataFirstName} ${metadataLastName}`.trim()
+              : metadataFirstName || metadataLastName || null,
+            avatar_url: null,
+            bio: null,
+            role: 'member',
+            created_at: new Date().toISOString(),
+            updated_at: new Date().toISOString(),
+          } as UserProfile;
+        }
+      }
       return null;
     }
+  }, []);
+
+  // Función para crear un perfil temporal desde metadatos del usuario
+  const createTemporaryProfile = useCallback((userId: string, currentUser: User): UserProfile | null => {
+    const userMetadata = currentUser.user_metadata || {};
+    const identityData = currentUser.identities?.[0]?.identity_data || {};
+    const metadataFirstName = userMetadata.first_name || identityData.first_name;
+    const metadataLastName = userMetadata.last_name || identityData.last_name;
+    const metadataEmail = currentUser.email || '';
+
+    if (metadataFirstName || metadataLastName || metadataEmail) {
+      return {
+        id: userId,
+        email: metadataEmail,
+        first_name: metadataFirstName || null,
+        last_name: metadataLastName || null,
+        full_name: metadataFirstName && metadataLastName 
+          ? `${metadataFirstName} ${metadataLastName}`.trim()
+          : metadataFirstName || metadataLastName || null,
+        display_name: metadataFirstName && metadataLastName 
+          ? `${metadataFirstName} ${metadataLastName}`.trim()
+          : metadataFirstName || metadataLastName || null,
+        avatar_url: null,
+        bio: null,
+        role: 'member',
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      } as UserProfile;
+    }
+    return null;
   }, []);
 
   // Función para actualizar el estado de autenticación
@@ -138,15 +190,25 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       setSession(currentSession);
       setUser(currentSession.user);
       
-      // Obtener perfil
+      // Establecer perfil temporal inmediatamente con metadatos (antes de consultar BD)
+      const tempProfile = createTemporaryProfile(currentSession.user.id, currentSession.user);
+      if (tempProfile) {
+        setProfile(tempProfile);
+      }
+      
+      // Luego obtener perfil completo de la BD y actualizar
       const userProfile = await fetchUserProfile(currentSession.user.id, currentSession.user);
-      setProfile(userProfile);
+      if (userProfile) {
+        setProfile(userProfile);
+      } else if (!tempProfile) {
+        setProfile(null);
+      }
     } else {
       setSession(null);
       setUser(null);
       setProfile(null);
     }
-  }, [fetchUserProfile]);
+  }, [fetchUserProfile, createTemporaryProfile]);
 
   // Inicialización y suscripción a cambios de autenticación
   useEffect(() => {

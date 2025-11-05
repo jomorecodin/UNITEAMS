@@ -27,31 +27,23 @@ export const Navbar: React.FC = () => {
   };
 
   const getUserDisplayName = () => {
-    // Verificar que profile exista
-    if (!profile) {
-      return user?.email?.split('@')[0] || 'Usuario';
+    // Usar solo el profile del contexto (que ya tiene los nombres correctos)
+    if (profile) {
+      const firstName = profile.first_name?.trim() || '';
+      const lastName = profile.last_name?.trim() || '';
+      
+      if (firstName && lastName) {
+        return `${firstName} ${lastName}`;
+      }
+      if (firstName) {
+        return firstName;
+      }
+      if (lastName) {
+        return lastName;
+      }
     }
 
-    // Obtener nombres directamente de los campos (no usar display_name)
-    const firstName = profile.first_name?.trim() || '';
-    const lastName = profile.last_name?.trim() || '';
-    
-    // Si tiene nombre Y apellido, mostrar ambos
-    if (firstName && lastName) {
-      return `${firstName} ${lastName}`;
-    }
-    
-    // Si solo tiene nombre
-    if (firstName) {
-      return firstName;
-    }
-    
-    // Si solo tiene apellido
-    if (lastName) {
-      return lastName;
-    }
-    
-    // Si no tiene nombre ni apellido, mostrar email como último recurso
+    // Último recurso: mostrar email
     return user?.email?.split('@')[0] || 'Usuario';
   };
 
