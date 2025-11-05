@@ -7,13 +7,27 @@ export const FontZoomControl: React.FC = () => {
 
   return (
     <div className="fixed bottom-4 right-4 z-[1100]">
-      {/* Botón flotante para abrir/cerrar */}
+      {/* Botón flotante: lupa con + */}
       <button
-        className="rounded-full bg-neutral-900 text-white border border-neutral-700 shadow px-3 py-2 hover:bg-neutral-800"
+        className="h-10 w-10 flex items-center justify-center rounded-full bg-neutral-900 text-white border border-neutral-700 shadow hover:bg-neutral-800"
         title="Accesibilidad: Tamaño de letra"
+        aria-label="Abrir configuración de tamaño de letra"
         onClick={() => setOpen(o => !o)}
       >
-        A
+        {/* Lupa con + (SVG) */}
+        <svg
+          xmlns="http://www.w3.org/2000/svg"
+          className="h-5 w-5"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="2"
+        >
+          <circle cx="11" cy="11" r="6" />
+          <path d="M21 21l-4.35-4.35" strokeLinecap="round" />
+          <path d="M11 8v6" strokeLinecap="round" />
+          <path d="M8 11h6" strokeLinecap="round" />
+        </svg>
       </button>
 
       {open && (
