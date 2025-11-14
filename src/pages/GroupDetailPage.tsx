@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { useParams, useNavigate, useLocation } from 'react-router-dom';
 import { Card } from '../components/Card';
 import { Button } from '../components/Button';
@@ -10,54 +10,51 @@ interface Group {
   name: string;
   description?: string;
   subject?: string;
+  code?: string;
   is_private: boolean;
   coordinator_id: string;
   created_at?: string;
+  session_type?: string;
+  current_participants?: number;
+  max_participants?: number;
+  meeting_date?: string | null;
+  meeting_time?: string | null;
+  tutor_name?: string | null;
+  members_count?: number;
 }
 
 interface GroupStatus {
   role: 'coordinator' | 'member' | 'invited' | 'none';
-  invited?: boolean;        // invited to private group
-  request_pending?: boolean;// sent join request pending
+  request_pending?: boolean;
+  [key: string]: any;
 }
 
 export const GroupDetailPage: React.FC = () => {
-  const { groupId } = useParams();
+  const { id, groupId } = useParams<{ id?: string; groupId?: string }>();
+  const effectiveGroupId = groupId || id;
   const navigate = useNavigate();
   const location = useLocation();
   const { user } = useAuth();
 
   const hint = (location.state as any)?.groupHint as Partial<Group> | undefined;
 
-  const [loading, setLoading] = useState(true);
-  const [actionLoading, setActionLoading] = useState(false);
+  const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [group, setGroup] = useState<Group | null>(hint ? ({
-    id: Number(hint.id),
-    name: hint.name || 'Grupo',
-    subject: hint.subject,
-    is_private: !!hint.is_private,
-    coordinator_id: '',
-  } as Group) : null);
-  const [status, setStatus] = useState<GroupStatus | null>(null);
-
-  // Coordinator management state
+  const [group, setGroup] = useState<Group | null>(null);
+  const [actionLoading, setActionLoading] = useState(false);
   const [requestsLoading, setRequestsLoading] = useState(false);
   const [membersLoading, setMembersLoading] = useState(false);
   const [requests, setRequests] = useState<any[]>([]);
   const [members, setMembers] = useState<any[]>([]);
   const [inviteEmail, setInviteEmail] = useState('');
   const [inviteLoading, setInviteLoading] = useState(false);
+  const [membersCount, setMembersCount] = useState<number | null>(null);
+  const [status, setStatus] = useState<GroupStatus | null>(null);
 
-  const isCoordinator = useMemo(() => status?.role === 'coordinator', [status]);
-  const isMember = useMemo(() => status?.role === 'member', [status]);
-  const isInvited = useMemo(() => status?.role === 'invited' || status?.invited, [status]);
-  const isPrivate = useMemo(() => !!group?.is_private, [group]);
-
-  const getAccessToken = async (): Promise<string | null> => {
+  const getAccessToken = (): string | null => {
     try {
-      const { data } = await supabase.auth.getSession();
-      return data.session?.access_token ?? null;
+      const raw = localStorage.getItem('sb-zskuikxfcjobpygoueqp-auth-token');
+      return raw ? JSON.parse(raw).access_token : null;
     } catch {
       return null;
     }
@@ -67,50 +64,135 @@ export const GroupDetailPage: React.FC = () => {
     const token = await getAccessToken();
     const headers: Record<string, string> = {
       Accept: 'application/json',
-      'Content-Type': 'application/json',
+      'Content-Type': 'application/json'
     };
     if (token) headers['Authorization'] = `Bearer ${token}`;
     return headers;
   };
 
-  // Fetch coordinator data
+  const fetchGroup = async () => {
+    if (!effectiveGroupId) return;
+    try {
+      const headers = await buildHeaders();
+      const res = await fetch(`http://localhost:8080/api/groups/${effectiveGroupId}`, { headers });
+      console.log(`GET /api/groups/${effectiveGroupId} → ${res.status}`);
+      if (!res.ok) {
+        setError('No se pudo cargar la información del grupo');
+        return;
+      }
+      const data: Group = await res.json();
+      setGroup(data);
+      setError(null);
+    } catch {
+      setError('No se pudo cargar la información del grupo');
+    }
+  };
+
+  const fetchMembershipStatus = async () => {
+    if (!groupId) return;
+    try {
+      const headers = await buildHeaders();
+      const res = await fetch(`http://localhost:8080/api/groups/my-groups`, { headers });
+      if (!res.ok) {
+        setStatus((prev) => prev ?? { role: 'none' });
+        return;
+      }
+      const list = await res.json();
+      const gid = Number(groupId);
+      const found = Array.isArray(list) ? list.find((g: any) => Number(g.id) === gid) : null;
+      if (found) {
+        const rawRole = found.role || found.membership_role || found.membershipRole || 'member';
+        setStatus({ role: rawRole === 'coordinator' ? 'coordinator' : 'member' });
+      } else {
+        setStatus({ role: 'none' });
+      }
+    } catch {
+      setStatus((prev) => prev ?? { role: 'none' });
+    }
+  };
+
+  useEffect(() => { fetchGroup(); }, [effectiveGroupId]);
+  useEffect(() => { fetchMembershipStatus(); }, [groupId]);
+
+  const participantsCount = group
+    ? (group.current_participants ??
+      (group as any).participants_count ??
+      (group as any).members_count ??
+      null)
+    : null;
+
   const fetchRequests = async () => {
     if (!groupId) return;
     setRequestsLoading(true);
     try {
       const headers = await buildHeaders();
-      const res = await fetch(`http://localhost:8080/api/study-groups/${groupId}/requests`, { headers });
+      const res = await fetch(`http://localhost:8080/api/groups/${groupId}/requests`, { headers });
       if (!res.ok) throw new Error('requests failed');
       const json = await res.json();
       setRequests(Array.isArray(json) ? json : []);
-    } catch (e) {
-      console.warn('No se pudieron cargar las solicitudes');
+    } catch {
       setRequests([]);
     } finally { setRequestsLoading(false); }
   };
 
-  const fetchMembers = async () => {
-    if (!groupId) return;
+  const fetchMembers = async (): Promise<any[]> => {
+    if (!groupId) return [];
     setMembersLoading(true);
     try {
       const headers = await buildHeaders();
-      const res = await fetch(`http://localhost:8080/api/study-groups/${groupId}/members`, { headers });
-      if (!res.ok) throw new Error('members failed');
-      const json = await res.json();
-      setMembers(Array.isArray(json) ? json : []);
-    } catch (e) {
-      console.warn('No se pudieron cargar los miembros');
+      const base = 'http://localhost:8080';
+      const candidates = [
+        `${base}/api/study-groups/${groupId}/members`,
+        `${base}/api/groups/${groupId}/members`,
+        `${base}/api/study-groups/${groupId}/participants`,
+        `${base}/api/groups/${groupId}/participants`,
+        `${base}/api/group-members?groupId=${groupId}`
+      ];
+
+      for (const url of candidates) {
+        try {
+          const res = await fetch(url, { headers });
+            console.log(`GET ${url} → ${res.status}`);
+          if (res.ok) {
+            const json = await res.json();
+            const arr = Array.isArray(json) ? json : (Array.isArray(json?.members) ? json.members : []);
+            setMembers(arr);
+            return arr;
+          }
+        } catch {
+          continue;
+        }
+      }
+
+      try {
+        const myRes = await fetch(`${base}/api/study-groups/my-groups`, { headers });
+        if (myRes.ok) {
+          const myList = await myRes.json();
+          const found = Array.isArray(myList) && myList.find((g: any) => String(g.id) === String(groupId));
+          if (found) {
+            const fakeMember = { id: (user as any)?.id ?? 'me', name: (user as any)?.email ?? 'Tú' };
+            setMembers([fakeMember]);
+            return [fakeMember];
+          }
+        }
+      } catch {}
+
       setMembers([]);
-    } finally { setMembersLoading(false); }
+      return [];
+    } catch {
+      setMembers([]);
+      return [];
+    } finally {
+      setMembersLoading(false);
+    }
   };
 
   useEffect(() => {
-    if (isCoordinator) {
+    if (status?.role === 'coordinator') {
       fetchRequests();
       fetchMembers();
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isCoordinator, groupId]);
+  }, [status?.role, groupId]);
 
   useEffect(() => {
     let alive = true;
@@ -122,38 +204,38 @@ export const GroupDetailPage: React.FC = () => {
       setLoading(true);
       setError(null);
       try {
-        const accessToken = await getAccessToken();
-        const headers: Record<string, string> = { 'Accept': 'application/json' };
-        if (accessToken) headers['Authorization'] = `Bearer ${accessToken}`;
+        const headers = await buildHeaders();
+        const groupRes = await fetch(`http://localhost:8080/api/study-groups/${groupId}`, { headers });
+        let groupData: Group | null = null;
 
-        const [groupRes, statusRes] = await Promise.all([
-          fetch(`http://localhost:8080/api/study-groups/${groupId}`, { headers }),
-          fetch(`http://localhost:8080/api/study-groups/${groupId}/status`, { headers })
-        ]);
+        if (groupRes.ok) {
+          groupData = await groupRes.json();
+          setGroup(groupData);
+        } else {
+          await fetchGroup();
+          if (!group && hint) {
+            setGroup(hint as Group);
+            groupData = hint as Group;
+          } else if (!group) {
+            setError('No se pudo cargar la información del grupo');
+          }
+        }
 
         if (!alive) return;
 
-        if (!groupRes.ok) {
-          console.warn('Group fetch failed:', groupRes.status, groupRes.statusText);
-          if (groupRes.status === 404 && hint) {
-            setGroup((prev) => prev || (hint as Group));
-          } else {
-            throw new Error('No se pudo cargar el grupo');
-          }
-        } else {
-          const groupJson = await groupRes.json();
-          setGroup(groupJson as Group);
-        }
-
-        if (!statusRes.ok) {
-          console.warn('Status fetch not OK, deriving basic status');
-          setStatus({ role: (hint && hint.coordinator_id === user.id) ? 'coordinator' : 'none' });
-        } else {
+        const statusRes = await fetch(`http://localhost:8080/api/study-groups/${groupId}/status`, { headers });
+        if (statusRes.ok) {
           const statusJson = await statusRes.json();
           setStatus(statusJson as GroupStatus);
+        } else {
+          const mems = await fetchMembers();
+          const isMemberNow = mems.some((m: any) =>
+            String(m.user_id ?? m.id ?? m.id_user ?? m.member_id) === String(user?.id)
+          );
+          const isCoord = !!groupData && String(groupData.coordinator_id) === String(user?.id);
+          setStatus(isMemberNow ? { role: 'member' } : (isCoord ? { role: 'coordinator' } : { role: 'none' }));
         }
-      } catch (e) {
-        console.error('Group detail load error:', e);
+      } catch {
         if (alive) {
           if (hint) {
             setGroup((prev) => prev || (hint as Group));
@@ -172,20 +254,86 @@ export const GroupDetailPage: React.FC = () => {
     return () => { alive = false; };
   }, [groupId, user]);
 
+  const normalizeStatus = (raw: any): GroupStatus => {
+    if (!raw) return { role: 'none' };
+    if (typeof raw === 'string') return { role: raw as GroupStatus['role'] };
+    if (raw.role) {
+      return {
+        role: raw.role as GroupStatus['role'],
+        request_pending: raw.request_pending ?? raw.pending_request ?? raw.requestPending ?? false,
+        ...raw
+      };
+    }
+    if (raw.status) {
+      return {
+        role: raw.status as GroupStatus['role'],
+        request_pending: raw.request_pending ?? false,
+        ...raw
+      };
+    }
+    return { role: 'none' };
+  };
+
+  useEffect(() => {
+    const loadStatus = async () => {
+      if (!group?.id) return;
+      try {
+        const headers = await buildHeaders();
+        const res = await fetch(`http://localhost:8080/api/groups/${group.id}/status`, { headers });
+        if (res.ok) {
+          const json = await res.json();
+          setStatus(normalizeStatus(json));
+        } else {
+          setStatus((prev) => prev ?? { role: 'none' });
+        }
+      } catch {
+        setStatus((prev) => prev ?? { role: 'none' });
+      }
+    };
+    loadStatus();
+  }, [group?.id]);
+
+  // Si el usuario es el creador del grupo, asegura rol coordinador
+  useEffect(() => {
+    if (!group || !user) return;
+    const isCreator = String(group.coordinator_id) === String(user.id);
+    if (isCreator && status?.role !== 'coordinator') {
+      setStatus((prev) => ({ ...(prev || { role: 'none' }), role: 'coordinator' }));
+    }
+  }, [group?.coordinator_id, user?.id]);
+
+  // Rol efectivo: prioriza si es el creador del grupo
+  const isCreator = String(group?.coordinator_id ?? '') === String(user?.id ?? '');
+  const effectiveRole = (isCreator ? 'coordinator' : (status?.role ?? 'none')) as GroupStatus['role'];
+  const isCoordinator = effectiveRole === 'coordinator';
+  const isMember = effectiveRole === 'member';
+  const isInvited = effectiveRole === 'invited';
+  const isPrivate = !!group?.is_private;
+
+  const roleLabel =
+    isCoordinator ? 'Coordinador' :
+    isMember ? 'Miembro' :
+    isInvited ? 'Invitado' :
+    isPrivate ? 'Privado' :
+    'Público';
+
   // Actions
   const handleLeaveGroup = async () => {
-    if (!groupId) return;
+    if (!group?.id) return;
     setActionLoading(true);
-    setError(null);
     try {
       const headers = await buildHeaders();
-      const res = await fetch(`http://localhost:8080/api/study-groups/${groupId}/leave`, { method: 'POST', headers });
-      if (!res.ok) throw new Error('leave failed');
-      setStatus({ role: 'none' });
-    } catch (e) {
-      console.error(e);
-      setError('No se pudo salir del grupo');
-    } finally { setActionLoading(false); }
+      const res = await fetch(`http://localhost:8080/api/groups/${group.id}/leave`, {
+        method: 'POST',
+        headers
+      });
+      if (res.ok) {
+        setStatus({ role: 'none' });
+        await fetchGroup();
+      }
+    } finally {
+      setActionLoading(false);
+    }
   };
 
   const handleApproveRequest = async (requestId: number) => {
@@ -196,7 +344,7 @@ export const GroupDetailPage: React.FC = () => {
       if (!res.ok) throw new Error('approve failed');
       fetchRequests();
       fetchMembers();
-    } catch (e) { console.error(e); }
+    } catch {}
   };
 
   const handleDeclineRequest = async (requestId: number) => {
@@ -206,7 +354,7 @@ export const GroupDetailPage: React.FC = () => {
       const res = await fetch(`http://localhost:8080/api/study-groups/${groupId}/requests/${requestId}/decline`, { method: 'POST', headers });
       if (!res.ok) throw new Error('decline failed');
       fetchRequests();
-    } catch (e) { console.error(e); }
+    } catch {}
   };
 
   const handleRemoveMember = async (memberId: string) => {
@@ -217,7 +365,7 @@ export const GroupDetailPage: React.FC = () => {
       const res = await fetch(`http://localhost:8080/api/study-groups/${groupId}/members/${memberId}`, { method: 'DELETE', headers });
       if (!res.ok) throw new Error('remove member failed');
       fetchMembers();
-    } catch (e) { console.error(e); }
+    } catch {}
   };
 
   const handleInvite = async () => {
@@ -231,8 +379,7 @@ export const GroupDetailPage: React.FC = () => {
       if (!res.ok) throw new Error('invite failed');
       setInviteEmail('');
       alert('Invitación enviada');
-    } catch (e) {
-      console.error(e);
+    } catch {
       alert('No se pudo enviar la invitación');
     } finally { setInviteLoading(false); }
   };
@@ -248,8 +395,7 @@ export const GroupDetailPage: React.FC = () => {
       });
       if (!res.ok) throw new Error('No se pudo aceptar la invitación');
       setStatus({ role: 'member' });
-    } catch (e) {
-      console.error(e);
+    } catch {
       setError('No se pudo realizar la acción');
     } finally {
       setActionLoading(false);
@@ -267,8 +413,7 @@ export const GroupDetailPage: React.FC = () => {
       });
       if (!res.ok) throw new Error('No se pudo rechazar la invitación');
       setStatus({ role: 'none' });
-    } catch (e) {
-      console.error(e);
+    } catch {
       setError('No se pudo realizar la acción');
     } finally {
       setActionLoading(false);
@@ -286,8 +431,7 @@ export const GroupDetailPage: React.FC = () => {
       });
       if (!res.ok) throw new Error('No se pudo solicitar unirse');
       setStatus({ role: 'none', request_pending: true });
-    } catch (e) {
-      console.error(e);
+    } catch {
       setError('No se pudo realizar la acción');
     } finally {
       setActionLoading(false);
@@ -295,36 +439,30 @@ export const GroupDetailPage: React.FC = () => {
   };
 
   const handleJoinPublic = async () => {
-    if (!groupId) return;
+    if (!group?.id) return;
     setActionLoading(true);
-    setError(null);
     try {
       const headers = await buildHeaders();
-      const res = await fetch(`http://localhost:8080/api/study-groups/${groupId}/join`, {
-        method: 'POST', headers
+      const res = await fetch(`http://localhost:8080/api/groups/${group.id}/join`, {
+        method: 'POST',
+        headers
       });
-      if (!res.ok) throw new Error('No se pudo unir al grupo');
-      setStatus({ role: 'member' });
-    } catch (e) {
-      console.error(e);
-      setError('No se pudo realizar la acción');
+      if (res.ok) {
+        setStatus({ role: 'member' });
+        await fetchGroup();
+      }
     } finally {
       setActionLoading(false);
     }
   };
 
+  const handleGoToRequests = () => {
+    if (!groupId) return;
+    navigate(`/groups/${groupId}/requests`);
+  };
+
   const CoordinatorView = () => (
     <div className="space-y-6">
-      <div className="flex flex-wrap gap-2">
-        <span className="px-2 py-1 rounded bg-blue-500/20 text-blue-300 text-xs">Coordinador</span>
-        {isPrivate ? (
-          <span className="px-2 py-1 rounded bg-yellow-500/20 text-yellow-300 text-xs">Privado</span>
-        ) : (
-          <span className="px-2 py-1 rounded bg-green-500/20 text-green-300 text-xs">Público</span>
-        )}
-      </div>
-
-      {/* Invite */}
       <div className="border border-neutral-800 rounded-lg p-4">
         <h3 className="text-white font-semibold mb-3">Invitar miembro</h3>
         <div className="flex flex-col sm:flex-row gap-2">
@@ -335,11 +473,12 @@ export const GroupDetailPage: React.FC = () => {
             value={inviteEmail}
             onChange={(e) => setInviteEmail(e.target.value)}
           />
-          <Button variant="primary" onClick={handleInvite} loading={inviteLoading} className="px-4">Enviar invitación</Button>
+          <Button variant="primary" onClick={handleInvite} loading={inviteLoading} className="px-4">
+            Enviar invitación
+          </Button>
         </div>
       </div>
 
-      {/* Requests */}
       <div className="border border-neutral-800 rounded-lg p-4">
         <div className="flex items-center justify-between mb-3">
           <h3 className="text-white font-semibold">Solicitudes pendientes</h3>
@@ -352,12 +491,28 @@ export const GroupDetailPage: React.FC = () => {
             {requests.map((r) => (
               <div key={r.id} className="flex items-center justify-between bg-neutral-900/40 rounded p-3">
                 <div className="min-w-0">
-                  <div className="text-white text-sm font-medium truncate">{r.email || r.user_email || 'Usuario'}</div>
-                  <div className="text-xs text-neutral-400">Solicitado el {r.created_at ? new Date(r.created_at).toLocaleString() : ''}</div>
+                  <div className="text-white text-sm font-medium truncate">
+                    {r.email || r.user_email || 'Usuario'}
+                  </div>
+                  <div className="text-xs text-neutral-400">
+                    {r.created_at ? new Date(r.created_at).toLocaleString() : ''}
+                  </div>
                 </div>
                 <div className="flex gap-2">
-                  <Button variant="primary" className="px-3 py-1.5 text-xs" onClick={() => handleApproveRequest(r.id)}>Aceptar</Button>
-                  <Button variant="secondary" className="px-3 py-1.5 text-xs" onClick={() => handleDeclineRequest(r.id)}>Rechazar</Button>
+                  <Button
+                    variant="primary"
+                    className="px-3 py-1.5 text-xs"
+                    onClick={() => handleApproveRequest(r.id)}
+                  >
+                    Aceptar
+                  </Button>
+                  <Button
+                    variant="secondary"
+                    className="px-3 py-1.5 text-xs"
+                    onClick={() => handleDeclineRequest(r.id)}
+                  >
+                    Rechazar
+                  </Button>
                 </div>
               </div>
             ))}
@@ -365,7 +520,6 @@ export const GroupDetailPage: React.FC = () => {
         )}
       </div>
 
-      {/* Members */}
       <div className="border border-neutral-800 rounded-lg p-4">
         <div className="flex items-center justify-between mb-3">
           <h3 className="text-white font-semibold">Miembros</h3>
@@ -378,48 +532,91 @@ export const GroupDetailPage: React.FC = () => {
             {members.map((m) => (
               <div key={m.id} className="flex items-center justify-between bg-neutral-900/40 rounded p-3">
                 <div className="min-w-0">
-                  <div className="text-white text-sm font-medium truncate">{m.name || m.full_name || m.email || 'Miembro'}</div>
+                  <div className="text-white text-sm font-medium truncate">
+                    {m.name || m.full_name || m.email || 'Miembro'}
+                  </div>
                   <div className="text-xs text-neutral-400">{m.email}</div>
                 </div>
                 <div className="flex gap-2">
-                  <Button variant="secondary" className="px-3 py-1.5 text-xs" onClick={() => handleRemoveMember(m.id)}>Remover</Button>
+                  <Button
+                    variant="secondary"
+                    className="px-3 py-1.5 text-xs"
+                    onClick={() => handleRemoveMember(m.id)}
+                  >
+                    Remover
+                  </Button>
                 </div>
               </div>
             ))}
           </div>
         )}
       </div>
-    </div>
-  );
 
-  const MemberView = () => (
-    <div className="space-y-4">
-      <span className="px-2 py-1 rounded bg-green-500/20 text-green-300 text-xs">Miembro</span>
-      <div className="flex flex-wrap gap-3">
-        <Button variant="primary" className="px-4 py-2">Ver sesiones</Button>
-        <Button variant="secondary" onClick={handleLeaveGroup} loading={actionLoading} className="px-4 py-2">Salir del grupo</Button>
+      <div className="flex justify-center flex-wrap gap-4 pt-2">
+        <Button variant="primary" className="px-5 py-2" onClick={handleGoToRequests}>
+          Ver solicitudes
+        </Button>
       </div>
     </div>
   );
 
+  const MemberView = () => (
+    
+      <div className="flex justify-center flex-wrap gap-4">
+        <Button variant="primary" className="px-5 py-2" onClick={handleGoToRequests}>
+          Ver solicitudes
+        </Button>
+        <Button
+          variant="secondary"
+          onClick={handleLeaveGroup}
+          loading={actionLoading}
+          className="px-5 py-2"
+        >
+          Salir del grupo
+        </Button>
+      </div>
+    
+  );
+
   const InvitedView = () => (
     <div className="space-y-4">
-      <span className="px-2 py-1 rounded bg-purple-500/20 text-purple-300 text-xs">Invitado</span>
-      <div className="flex flex-wrap gap-3">
-        <Button variant="primary" onClick={handleAcceptInvite} loading={actionLoading} className="px-4 py-2">Aceptar invitación</Button>
-        <Button variant="secondary" onClick={handleDeclineInvite} disabled={actionLoading} className="px-4 py-2">Rechazar</Button>
+      <div className="flex justify-center flex-wrap gap-4">
+        <Button
+          variant="primary"
+          onClick={handleAcceptInvite}
+          loading={actionLoading}
+          className="px-5 py-2"
+        >
+          Aceptar invitación
+        </Button>
+        <Button
+          variant="secondary"
+          onClick={handleDeclineInvite}
+          disabled={actionLoading}
+          className="px-5 py-2"
+        >
+          Rechazar
+        </Button>
       </div>
     </div>
   );
 
   const VisitorPrivateView = () => (
     <div className="space-y-4">
-      <span className="px-2 py-1 rounded bg-yellow-500/20 text-yellow-300 text-xs">Grupo privado</span>
       {status?.request_pending ? (
-        <p className="text-neutral-400 text-sm">Solicitud enviada. Espera la aprobación del coordinador.</p>
+        <p className="text-neutral-400 text-sm text-center">
+          Solicitud enviada. Espera la aprobación del coordinador.
+        </p>
       ) : (
-        <div className="flex flex-wrap gap-3">
-          <Button variant="primary" onClick={handleRequestJoin} loading={actionLoading} className="px-4 py-2">Solicitar unirse</Button>
+        <div className="flex justify-center flex-wrap gap-4">
+          <Button
+            variant="primary"
+            onClick={handleRequestJoin}
+            loading={actionLoading}
+            className="px-5 py-2"
+          >
+            Solicitar unirse
+          </Button>
         </div>
       )}
     </div>
@@ -427,64 +624,144 @@ export const GroupDetailPage: React.FC = () => {
 
   const VisitorPublicView = () => (
     <div className="space-y-4">
-      <span className="px-2 py-1 rounded bg-green-500/20 text-green-300 text-xs">Grupo público</span>
-      <div className="flex flex-wrap gap-3">
-        <Button variant="primary" onClick={handleJoinPublic} loading={actionLoading} className="px-4 py-2">Unirme</Button>
+      <div className="flex justify-center flex-wrap gap-4">
+        <Button
+          variant="primary"
+          onClick={handleJoinPublic}
+          loading={actionLoading}
+          className="px-5 py-2"
+        >
+          Unirme
+        </Button>
       </div>
     </div>
   );
 
+  const roleView: React.ReactNode =
+    isCoordinator ? <CoordinatorView /> :
+    isMember ? <MemberView /> :
+    isInvited ? <InvitedView /> :
+    isPrivate ? <VisitorPrivateView /> :
+    <VisitorPublicView />;
+
   if (loading) {
     return (
-      <div className="min-h-screen bg-black flex items-center justify-center" style={{ paddingTop: '5rem' }}>
+      <div className="min-h-screen flex items-center justify-center bg-black" style={{ paddingTop: '5rem' }}>
         <div className="text-center">
           <div className="w-8 h-8 border-2 border-white border-t-transparent rounded-full animate-spin mx-auto mb-4" />
-          <p className="text-white">Cargando grupo...</p>
+          <p className="text-white text-sm">Cargando grupo...</p>
         </div>
       </div>
     );
   }
 
-  if (error || !group || !status) {
+  if (error && !group) {
     return (
-      <div className="min-h-screen bg-black flex items-center justify-center px-4" style={{ paddingTop: '5rem' }}>
-        <Card className="p-8 max-w-lg w-full">
-          <h1 className="text-xl font-bold text-white mb-2">No se pudo cargar el grupo</h1>
-          <p className="text-neutral-400 mb-4">{error || 'Intenta de nuevo más tarde.'}</p>
+      <div className="min-h-screen flex items-center justify-center bg-black px-4" style={{ paddingTop: '5rem' }}>
+        <Card className="max-w-sm w-full border border-red-900/40">
+          <h2 className="text-white font-semibold mb-2">No se pudo cargar el grupo</h2>
+            <p className="text-neutral-400 text-sm mb-4">{error}</p>
+            <Button variant="secondary" onClick={() => navigate(-1)}>Volver</Button>
+        </Card>
+      </div>
+    );
+  }
+
+  if (!group) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-black px-4" style={{ paddingTop: '5rem' }}>
+        <Card className="max-w-sm w-full">
+          <h2 className="text-white font-semibold mb-2">Grupo no disponible</h2>
+          <p className="text-neutral-400 text-sm mb-4">Intenta nuevamente más tarde.</p>
           <Button variant="secondary" onClick={() => navigate(-1)}>Volver</Button>
         </Card>
       </div>
     );
   }
 
+  const GroupAvatar: React.FC<{ name?: string; code?: string }> = ({ name, code }) => {
+    const label = (name?.trim() || code || '?').slice(0, 2).toUpperCase();
+    return (
+      <div className="w-30 h-30 rounded-full bg-neutral-900 border-4 border-black ring-2 ring-neutral-700 flex items-center justify-center">
+        <span className="text-white font-bold">{label}</span>
+      </div>
+    );
+  };
+
+  const StatPill: React.FC<{ label: string; value: React.ReactNode }> = ({ label, value }) => (
+    <div className="bg-neutral-900/60 border border-neutral-700 rounded-lg p-3 text-xs">
+      <div className="text-neutral-400">{label}</div>
+      <div className="text-white font-semibold mt-1">{value}</div>
+    </div>
+  );
+
+  const sessionTypeText = (() => {
+    const raw =
+      group?.session_type ??
+      (group as any)?.sessionType ??
+      (group as any)?.type ??
+      null;
+    if (!raw) return '—';
+    const v = String(raw).toLowerCase();
+    if (v === 'examen') return 'Examen';
+    if (v === 'seguimiento') return 'Seguimiento';
+    return v.charAt(0).toUpperCase() + v.slice(1);
+  })();
+
+  const shownParticipants =
+    group?.current_participants ??
+    (group as any)?.participants_count ??
+    (group as any)?.members_count ??
+    null;
+
   return (
-    <div className="min-h-screen bg-black px-4 sm:px-6 lg:px-8" style={{ paddingTop: '5rem', paddingBottom: '3rem' }}>
-      <div className="max-w-5xl mx-auto space-y-6">
-        <div>
-          <h1 className="text-2xl sm:text-3xl font-bold text-white mb-2">{group.name}</h1>
-          <div className="flex flex-wrap items-center gap-2 text-sm text-neutral-400">
-            {group.subject && <span>{group.subject}</span>}
-            <span className="text-neutral-600">•</span>
-            <span>{isPrivate ? 'Privado' : 'Público'}</span>
-            {group.created_at && (
-              <>
-                <span className="text-neutral-600">•</span>
-                <span>Creado el {new Date(group.created_at).toLocaleDateString()}</span>
-              </>
+    <div className="min-h-screen bg-black text-white px-4 pb-20" style={{ paddingTop: '5rem' }}>
+      <div className="max-w-6xl mx-auto">
+        <div className="bg-neutral-900/60 border border-neutral-800 rounded-xl overflow-hidden">
+          <div className="h-28 bg-gradient-to-r from-red-700 to-orange-400" />
+          <div className="px-4 sm:px-6 -mt-1 flex items-end gap-4">
+            <GroupAvatar name={group?.name} code={group?.code} />
+            <div className="flex-1 pb-2">
+              <span className="inline-block text-xs font-medium text-neutral-300 mb-1 px-2 py-0.5 rounded bg-neutral-800/60 border border-neutral-700">
+                {roleLabel}
+              </span>
+              <h1 className="text-4xl font-bold text-white leading-tight">{group?.name}</h1>
+              <div className="text-neutral-400 text-sm mt-0.5">Código: {group?.code || '—'}</div>
+            </div>
+          </div>
+          <div className="p-4 sm:p-6 space-y-6">
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+              <StatPill
+                label="Participantes"
+                value={
+                  <>
+                    {(shownParticipants ?? '—').toString()}
+                    {group?.max_participants ? ` / ${group.max_participants}` : ''}
+                  </>
+                }
+              />
+              <StatPill label="Tipo" value={sessionTypeText} />
+              <StatPill label="Privacidad" value={group?.is_private ? '🔒 Privado' : '🌍 Público'} />
+              <StatPill label="ID" value={group?.id ?? '—'} />
+            </div>
+            {group?.description && (
+              <div className="bg-neutral-900/50 border border-neutral-800 rounded-lg p-4">
+                <h3 className="text-sm font-semibold text-white mb-1">Descripción</h3>
+                <p className="text-neutral-300 text-sm whitespace-pre-wrap">{group.description}</p>
+              </div>
+            )}
+            {roleView && (
+              <div className="bg-neutral-900/50 border border-neutral-800 rounded-lg p-4">
+                {roleView}
+              </div>
             )}
           </div>
-          {group.description && (
-            <p className="text-neutral-300 mt-3">{group.description}</p>
-          )}
         </div>
-
-        <Card className="p-6">
-          {isCoordinator && <CoordinatorView />}
-          {!isCoordinator && isMember && <MemberView />}
-          {!isCoordinator && !isMember && isInvited && <InvitedView />}
-          {!isCoordinator && !isMember && !isInvited && isPrivate && <VisitorPrivateView />}
-          {!isCoordinator && !isMember && !isInvited && !isPrivate && <VisitorPublicView />}
-        </Card>
+        <div className="mt-6 flex justify-center">
+          <Button variant="secondary" onClick={() => navigate('/dashboard')} className="px-6 py-2">
+            Volver al dashboard
+          </Button>
+        </div>
       </div>
     </div>
   );

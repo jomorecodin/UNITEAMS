@@ -4,6 +4,7 @@ import { Card } from '../components/Card';
 import { Button } from '../components/Button';
 import { Link, useNavigate } from 'react-router-dom'; // <-- añade useNavigate
 import { supabase } from '../lib/supabaseClient';
+import { HorizontalCarousel } from '../components/HorizontalCarousel'; // ajusta la ruta relativa
 
 interface StudySession {
   id: number;
@@ -196,10 +197,10 @@ const SessionsManager: React.FC<SessionsManagerProps> = ({ initialSessions = [] 
 
       {/* Horizontal list */}
       {loading ? (
-        <div className="overflow-x-auto">
-          <div className="flex gap-4 snap-x snap-mandatory pb-2">
-            {Array.from({ length: 5 }).map((_, i) => (
-              <div key={i} className="min-w-[240px] snap-start bg-neutral-900/40 border border-neutral-800 rounded-xl p-4 animate-pulse">
+        <HorizontalCarousel className="pb-2">
+          {Array.from({ length: 5 }).map((_, i) => (
+            <div key={i} className="min-w-[260px]">
+              <div className="h-full bg-neutral-900/40 border border-neutral-800 rounded-xl p-4 animate-pulse">
                 <div className="h-4 w-32 bg-neutral-800 rounded mb-2" />
                 <div className="h-3 w-24 bg-neutral-800 rounded" />
                 <div className="mt-3 h-3 w-28 bg-neutral-800 rounded" />
@@ -209,58 +210,60 @@ const SessionsManager: React.FC<SessionsManagerProps> = ({ initialSessions = [] 
                   <div className="h-5 w-12 bg-neutral-800 rounded" />
                 </div>
               </div>
-            ))}
-          </div>
-        </div>
+            </div>
+          ))}
+        </HorizontalCarousel>
       ) : sessions.length === 0 ? (
         <div className="py-10 text-center text-neutral-500">Aún no tienes sesiones</div>
       ) : (
-        <div className="overflow-x-auto">
-          <div className="flex gap-4 snap-x snap-mandatory pb-2">
-            {sessions.slice(0,5).map((s) => {
-              const coordinator = (s.coordinator_id && user?.id && s.coordinator_id === user.id) || s.is_coordinator;
-              return (
-                <Link to={`/groups/${s.id}`} className="min-w-[260px] snap-start rounded-xl p-4 bg-gradient-to-b from-neutral-900/60 to-neutral-900/30 border border-neutral-800 hover:border-neutral-700 hover:from-neutral-900/70 hover:to-neutral-900/40 transition-colors group shadow-sm">
-                  {/* Header */}
-                  <div className="flex items-start justify-between">
-                    <div className="min-w-0 pr-3">
-                      <div className="text-white font-semibold truncate group-hover:text-white/90">{s.name}</div>
-                    </div>
-                    {coordinator && (
-                      <span className="px-2 py-0.5 rounded text-[10px] bg-purple-500/20 text-purple-300 whitespace-nowrap">Coordinador</span>
-                    )}
+        <HorizontalCarousel className="pb-2">
+          {sessions.map((s) => {
+            const coordinator = (s.coordinator_id && user?.id && s.coordinator_id === user.id) || s.is_coordinator;
+            return (
+              <Link
+                to={`/groups/${s.id}`}
+                key={s.id}
+                className="min-w-[260px] rounded-xl p-4 bg-gradient-to-b from-neutral-900/60 to-neutral-900/30 border border-neutral-800 hover:border-neutral-700 hover:from-neutral-900/70 hover:to-neutral-900/40 transition-colors group shadow-sm"
+              >
+                {/* Header */}
+                <div className="flex items-start justify-between">
+                  <div className="min-w-0 pr-3">
+                    <div className="text-white font-semibold truncate group-hover:text-white/90">{s.name}</div>
                   </div>
-                  {/* Meta */}
-                  <div className="mt-3 flex items-center justify-between text-xs text-neutral-300">
-                    <div className="flex items-center gap-2">
-                      <svg className="w-3.5 h-3.5 text-neutral-400" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"/></svg>
-                      <span>{s.session_type === 'examen' ? (s.meeting_date || '-') : (s.meeting_day || '-')}</span>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <svg className="w-3.5 h-3.5 text-neutral-400" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
-                      <span>{(s.meeting_time || '').slice(0,5)}</span>
+                  {coordinator && (
+                    <span className="px-2 py-0.5 rounded text-[10px] bg-purple-500/20 text-purple-300 whitespace-nowrap">Coordinador</span>
+                  )}
+                </div>
+                {/* Meta */}
+                <div className="mt-3 flex items-center justify-between text-xs text-neutral-300">
+                  <div className="flex items-center gap-2">
+                    <svg className="w-3.5 h-3.5 text-neutral-400" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"/></svg>
+                    <span>{s.session_type === 'examen' ? (s.meeting_date || '-') : (s.meeting_day || '-')}</span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <svg className="w-3.5 h-3.5 text-neutral-400" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+                    <span>{(s.meeting_time || '').slice(0,5)}</span>
+                  </div>
+                </div>
+                {/* Footer */}
+                <div className="mt-3 space-y-1.5">
+                  {s.subject && <div><span className="px-2 py-0.5 rounded bg-neutral-800 text-neutral-300 text-[11px]">{s.subject}</span></div>}
+                  <div><span className={`px-2 py-0.5 rounded text-[11px] ${s.session_type === 'examen' ? 'bg-red-500/20 text-red-400' : 'bg-blue-500/20 text-blue-300'}`}>{s.session_type}</span></div>
+                  <div className="flex items-center justify-between">
+                    <span className="px-2 py-0.5 rounded text-[10px] bg-neutral-800 text-neutral-300">{s.is_private ? 'Privada' : 'Pública'}</span>
+                    <div className="flex gap-2">
+                      {s.joined ? (
+                        <Button variant="secondary" className="px-2 py-1 text-[11px]" onClick={(e) => { e.preventDefault(); leaveSession(s.id); }}>Salir</Button>
+                      ) : (
+                        <Button variant="primary" className="px-2 py-1 text-[11px]" onClick={(e) => { e.preventDefault(); joinSession(s.id); }}>Unirme</Button>
+                      )}
                     </div>
                   </div>
-                  {/* Footer */}
-                  <div className="mt-3 space-y-1.5">
-                    {s.subject && <div><span className="px-2 py-0.5 rounded bg-neutral-800 text-neutral-300 text-[11px]">{s.subject}</span></div>}
-                    <div><span className={`px-2 py-0.5 rounded text-[11px] ${s.session_type === 'examen' ? 'bg-red-500/20 text-red-400' : 'bg-blue-500/20 text-blue-300'}`}>{s.session_type}</span></div>
-                    <div className="flex items-center justify-between">
-                      <span className="px-2 py-0.5 rounded text-[10px] bg-neutral-800 text-neutral-300">{s.is_private ? 'Privada' : 'Pública'}</span>
-                      <div className="flex gap-2">
-                        {s.joined ? (
-                          <Button variant="secondary" className="px-2 py-1 text-[11px]" onClick={(e) => { e.preventDefault(); leaveSession(s.id); }}>Salir</Button>
-                        ) : (
-                          <Button variant="primary" className="px-2 py-1 text-[11px]" onClick={(e) => { e.preventDefault(); joinSession(s.id); }}>Unirme</Button>
-                        )}
-                      </div>
-                    </div>
-                  </div>
-                </Link>
-              );
-            })}
-          </div>
-        </div>
+                </div>
+              </Link>
+            );
+          })}
+        </HorizontalCarousel>
       )}
 
       {/* Modal create/edit */}

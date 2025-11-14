@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { useParams, Link } from 'react-router-dom';
+import { useParams, Link, useNavigate } from 'react-router-dom';
 import { Card } from '../components/Card';
 import { Button } from '../components/Button';
 import { createPortal } from 'react-dom';
@@ -26,6 +26,7 @@ export const GroupTutorRequestsPage: React.FC = () => {
   const [requests, setRequests] = useState<GroupRequest[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [statusCode, setStatusCode] = useState<number | null>(null);
   const [deletingId, setDeletingId] = useState<number | null>(null);
   const [acceptingId, setAcceptingId] = useState<number | null>(null);
   const [group, setGroup] = useState<GroupInfo>({ tutorId: null, tutorName: null });
@@ -37,6 +38,8 @@ export const GroupTutorRequestsPage: React.FC = () => {
     tutorId: string | null;
     tutorName: string | null;
   }>({ open: false, requestId: null, tutorId: null, tutorName: null });
+
+  const navigate = useNavigate();
 
   const hasTutorAssigned = !!(group.tutorId !== null && String(group.tutorId).trim().length > 0);
 
@@ -95,6 +98,7 @@ export const GroupTutorRequestsPage: React.FC = () => {
     if (!numericGroupId) return;
     setLoading(true);
     setError(null);
+    setStatusCode(null);
     try {
       const token = getAccessToken();
       console.log('🔍 Fetching requests for group:', numericGroupId);
@@ -107,10 +111,12 @@ export const GroupTutorRequestsPage: React.FC = () => {
       });
       console.log('📡 Response status:', res.status);
       if (!res.ok) {
+        setStatusCode(res.status);
         const txt = await res.text().catch(() => '');
         console.error('❌ Error response:', txt);
         throw new Error(txt || `Error ${res.status}`);
       }
+     setStatusCode(res.status); // 200
       const data: GroupRequest[] = await res.json();
       console.log('✅ Requests loaded:', data);
       console.log('🔍 Primera solicitud (estructura completa):', JSON.stringify(data[0], null, 2));
@@ -216,6 +222,29 @@ export const GroupTutorRequestsPage: React.FC = () => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [numericGroupId]);
 
+  // Si ya tienes error/message/status, reutilízalos.
+  // Si el error viene como JSON string, lo parseamos para extraer message.
+  const parsedErrorMsg = React.useMemo(() => {
+    if (!error) return '';
+    try {
+      const obj = typeof error === 'string' ? JSON.parse(error) : error;
+      return obj?.message || String(error);
+    } catch {
+      return String(error);
+    }
+  }, [error]);
+
+  // Considera ‘acceso denegado’ cuando el msg indica coordinador/admin o status 401/403
+  const isAccessDenied =
+    /coordinador|administrador|coordinator|admin/i.test(parsedErrorMsg) ||
+    statusCode === 401 || statusCode === 403; // statusCode: guarda el res.status al fallar la carga
+
+  // Helper para recargar
+  const loadData = () => {
+    fetchRequests();
+    fetchGroup();
+  };
+
   if (!numericGroupId) {
     return (
       <div className="min-h-screen bg-black px-4 sm:px-6 lg:px-8 flex items-center justify-center" style={{ paddingTop: '5rem' }}>
@@ -244,12 +273,18 @@ export const GroupTutorRequestsPage: React.FC = () => {
 
   if (error) {
     return (
-      <div className="min-h-screen bg-black px-4 sm:px-6 lg:px-8 flex items-center justify-center" style={{ paddingTop: '5rem' }}>
-        <Card className="p-8 text-center">
-          <div className="text-red-500 text-4xl mb-4">⚠️</div>
-          <h3 className="text-xl font-semibold text-white mb-2">Error al cargar</h3>
-          <p className="text-neutral-400 mb-4">{error}</p>
-          <Button variant="primary" onClick={fetchRequests}>Reintentar</Button>
+      <div className="min-h-screen bg-black flex items-center justify-center px-4" style={{ paddingTop: '5rem' }}>
+        <Card className="p-8 max-w-lg w-full text-center">
+          <div className="text-yellow-400 text-3xl mb-2">!</div>
+          <h1 className="text-xl font-bold text-white mb-2">Error al cargar</h1>
+          <p className="text-neutral-400 mb-6">{parsedErrorMsg || 'Ocurrió un error'}</p>
+          <div className="flex justify-center">
+            {isAccessDenied ? (
+              <Button variant="secondary" onClick={() => navigate('/dashboard')}>Volver</Button>
+            ) : (
+              <Button variant="primary" onClick={loadData}>Reintentar</Button>
+            )}
+          </div>
         </Card>
       </div>
     );

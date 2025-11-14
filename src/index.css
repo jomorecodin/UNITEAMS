@@ -194,3 +194,7 @@ input[type="checkbox"]:hover {
 html {
   font-size: calc(16px * var(--font-zoom));
 }
+
+/* Oculta scrollbar horizontal */
+.no-scrollbar::-webkit-scrollbar { display: none; }
+.no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
