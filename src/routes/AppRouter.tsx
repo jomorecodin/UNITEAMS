@@ -19,6 +19,7 @@ import { GroupTutorRequestsPage } from '../pages/GroupTutorRequestsPage';
 import { NotFound } from '../pages/NotFound';
 import { Profile } from '../pages/Profile';
 import { GroupDetailPage } from '../pages/GroupDetailPage';
+import { TutorFeedbackPage } from '../pages/TutorFeedbackPage';
 
 export const AppRouter: React.FC = () => {
   return (
@@ -140,6 +141,14 @@ export const AppRouter: React.FC = () => {
                 element={
                   <ProtectedRoute>
                     <Profile />
+                  </ProtectedRoute>
+                } 
+              />
+              <Route 
+                path="/tutors/:tutorId/feedback" 
+                element={
+                  <ProtectedRoute>
+                    <TutorFeedbackPage />
                   </ProtectedRoute>
                 } 
               />

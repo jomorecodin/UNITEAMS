@@ -11,7 +11,7 @@
 }
 
 body {
-  background-color: black;
+  background-color: #0e0e10;
   color: white;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
@@ -198,3 +198,24 @@ html {
 /* Oculta scrollbar horizontal */
 .no-scrollbar::-webkit-scrollbar { display: none; }
 .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+
+.card {
+  backdrop-filter: blur(4px);
+}
+
+::-webkit-scrollbar {
+  width: 10px;
+}
+
+::-webkit-scrollbar-track {
+  background: #000000;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #2a2a30;
+  border-radius: 6px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #383840;
+}
