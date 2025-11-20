@@ -4,6 +4,7 @@ import { Card } from '../components/Card';
 import { Button } from '../components/Button';
 import { useAuth } from '../context/AuthContext';
 import { supabase } from '../lib/supabaseClient';
+import { GroupChat } from '../components/GroupChat';
 
 interface Group {
   id: number;
@@ -757,6 +758,10 @@ export const GroupDetailPage: React.FC = () => {
             )}
           </div>
         </div>
+        {/* Chat del grupo integrado debajo de los detalles */}
+        {effectiveGroupId && (
+          <GroupChat groupId={String(effectiveGroupId)} />
+        )}
         <div className="mt-6 flex justify-center">
           <Button variant="secondary" onClick={() => navigate('/dashboard')} className="px-6 py-2">
             Volver al dashboard
