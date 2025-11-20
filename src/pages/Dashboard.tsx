@@ -555,10 +555,20 @@ export const Dashboard: React.FC = () => {
   const SIGN_OUT_TIMEOUT_MS = 1200; // antes 5000
   const wait = (ms: number) => new Promise((res) => setTimeout(res, ms));
 
-  const handleSignOut = () => {
-    // logout instantáneo + navegación inmediata
-    signOut();
-    navigate('/login', { replace: true });
+  const handleSignOut = async () => {
+    setSigningOut(true);
+    try {
+      await signOut();
+      clearAuthStorage();
+      navigate('/signin', { replace: true });
+    } catch (e) {
+      console.error('Sign out error:', e);
+      // IMPORTANTE: Resetear el estado si falla
+      setSigningOut(false);
+    } finally {
+      // Asegurar que siempre se resetea después de un tiempo
+      setTimeout(() => setSigningOut(false), 2000);
+    }
   };
 
   // ✅ Obtener nombre del mes y año
@@ -639,11 +649,22 @@ export const Dashboard: React.FC = () => {
 
   return (
     <div className="min-h-screen bg-black px-4 sm:px-6 lg:px-8" style={{ paddingTop: '5rem', paddingBottom: '3rem' }}>
-      <div className="max-w-7xl mx-auto">
-        {/* Header de bienvenida */}
-        <h1 className="text-3xl sm:text-4xl font-bold text-white mb-10 sm:mb-12 pt-8 sm:pt-10 pb-6 sm:pb-8">
-          Bienvenido {displayName}
-        </h1>
+      <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8">
+        {/* Encabezado de bienvenida */}
+        <div className="flex items-center gap-2 mb-6">
+          <h1 className="text-2xl sm:text-3xl font-bold text-white">
+            Bienvenido{profile?.first_name ? `, ${profile.first_name}` : ''}!
+          </h1>
+          {isAdmin && (
+            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs font-medium bg-amber-500/20 text-amber-300 border border-amber-500/30">
+              <svg viewBox="0 0 24 24" className="w-3.5 h-3.5" fill="currentColor" aria-hidden="true">
+                <path d="M12 2l3.09 6.26L22 9.27l-5 4.87L18.18 21 12 17.77 5.82 21 7 14.14l-5-4.87 6.91-1.01L12 2z" />
+              </svg>
+              Admin
+            </span>
+          )}
+        </div>
+
         {/* Calendario rediseñado */}
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-10 sm:mb-12">
           {/* Calendario semanal compacto */}
@@ -920,6 +941,27 @@ export const Dashboard: React.FC = () => {
           )}
         </div>
 
+        {/* Botón de cerrar sesión */}
+        <div className="mt-8">
+          <Button 
+            variant="secondary" 
+            onClick={handleSignOut}
+            disabled={signingOut}
+            className="w-full relative"
+          >
+            {signingOut ? (
+              <span className="flex items-center justify-center gap-2">
+                <svg className="animate-spin h-4 w-4 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                </svg>
+                Cerrando sesión...
+              </span>
+            ) : (
+              'Cerrar sesión'
+            )}
+          </Button>
+        </div>
       </div>
     </div>
   );
