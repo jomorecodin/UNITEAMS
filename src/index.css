@@ -1,0 +1,200 @@
+@import "tailwindcss";
+@import url('https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700;800;900&display=swap');
+
+:root {
+  color-scheme: dark;
+  --font-zoom: 1; /* 1 = 100% */
+}
+
+* {
+  font-family: 'Poppins', sans-serif;
+}
+
+body {
+  background-color: black;
+  color: white;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* Clases personalizadas para el diseño bicromático */
+.red-accent {
+  color: #dd2e03;
+}
+
+.red-bg {
+  background-color: #dd2e03;
+}
+
+.red-bg:hover {
+  background-color: #b82502;
+}
+
+.red-border {
+  border-color: #dd2e03;
+}
+
+.red-border-hover:hover {
+  border-color: #dd2e03;
+}
+
+.navbar-custom {
+  background: rgba(0, 0, 0, 0.95);
+  backdrop-filter: blur(20px);
+  border-bottom: 1px solid #dd2e03;
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  z-index: 50;
+  transition: transform 0.3s ease-in-out;
+}
+
+.navbar-hidden {
+  transform: translateY(-100%);
+}
+
+.navbar-visible {
+  transform: translateY(0);
+}
+
+.card-custom {
+  background: rgba(0, 0, 0, 0.8);
+  border: 1px solid rgba(221, 46, 3, 0.3);
+  transition: all 0.3s ease;
+}
+
+.card-custom:hover {
+  border-color: #dd2e03;
+  box-shadow: 0 8px 25px rgba(221, 46, 3, 0.2);
+  transform: translateY(-2px);
+}
+
+.btn-red {
+  background-color: #dd2e03;
+  color: white;
+  border: none;
+  transition: all 0.3s ease;
+  box-shadow: 0 4px 15px rgba(221, 46, 3, 0.3);
+}
+
+.btn-red:hover {
+  background-color: #b82502;
+  transform: translateY(-1px);
+  box-shadow: 0 6px 20px rgba(221, 46, 3, 0.4);
+}
+
+.btn-red-outline {
+  background: transparent;
+  color: #dd2e03;
+  border: 2px solid #dd2e03;
+  transition: all 0.3s ease;
+}
+
+.btn-red-outline:hover {
+  background-color: #dd2e03;
+  color: white;
+  transform: translateY(-1px);
+}
+
+.input-custom {
+  background-color: #171717;
+  border: 1px solid #404040;
+  color: white;
+  transition: all 0.2s ease-in-out;
+}
+
+.input-custom:focus {
+  border-color: #dd2e03;
+  outline: none;
+  box-shadow: 0 0 0 2px rgba(221, 46, 3, 0.2);
+}
+
+.input-custom::placeholder {
+  color: #a3a3a3;
+}
+
+.input-custom:hover {
+  border-color: #525252;
+}
+
+/* Password strength indicator */
+.password-strength {
+  height: 2px;
+  border-radius: 1px;
+  transition: all 0.3s ease;
+}
+
+.password-strength.weak {
+  background-color: #ef4444;
+  width: 33%;
+}
+
+.password-strength.medium {
+  background-color: #f59e0b;
+  width: 66%;
+}
+
+.password-strength.strong {
+  background-color: #10b981;
+  width: 100%;
+}
+
+/* Checkbox styles */
+input[type="checkbox"] {
+  appearance: none;
+  -webkit-appearance: none;
+  -moz-appearance: none;
+  width: 1rem;
+  height: 1rem;
+  border: 1px solid #404040;
+  border-radius: 0.25rem;
+  background-color: #171717;
+  position: relative;
+  cursor: pointer;
+  transition: all 0.2s ease-in-out;
+}
+
+input[type="checkbox"]:checked {
+  background-color: #dd2e03;
+  border-color: #dd2e03;
+}
+
+input[type="checkbox"]:checked::before {
+  content: '✓';
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  color: white;
+  font-size: 0.75rem;
+  font-weight: bold;
+}
+
+input[type="checkbox"]:focus {
+  outline: none;
+  box-shadow: 0 0 0 2px rgba(221, 46, 3, 0.2);
+}
+
+input[type="checkbox"]:hover {
+  border-color: #525252;
+}
+
+.footer-custom {
+  background: rgba(0, 0, 0, 0.9);
+  border-top: 1px solid #dd2e03;
+}
+
+.spinner-red {
+  border-color: #dd2e03;
+  border-top-color: transparent;
+}
+
+/* Escala la tipografía basada en rem (Tailwind usa rem) */
+html {
+  font-size: calc(16px * var(--font-zoom));
+}
+
+/* Oculta scrollbar horizontal */
+.no-scrollbar::-webkit-scrollbar { display: none; }
+.no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
