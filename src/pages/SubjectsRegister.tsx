@@ -3,18 +3,29 @@ import { Link, useNavigate } from 'react-router-dom'; // <-- Agrega este import
 import { supabase } from '../lib/supabaseClient';
 import { Card } from '../components/Card';
 import { Button } from '../components/Button';
+import { useAuth } from '../context/AuthContext';
 
 type Subject = { id_subject: number; name: string };
 
 const SubjectsRegister: React.FC = () => {
+  const { isAdmin, adminLoading } = useAuth();
   const [name, setName] = useState('');
   const [subjects, setSubjects] = useState<Subject[]>([]);
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
   const navigate = useNavigate(); // <-- Hook para redireccionar
 
+  useEffect(() => {
+    if (adminLoading) return;
+    if (!isAdmin) {
+      navigate('/dashboard', { replace: true });
+      return;
+    }
+  }, [isAdmin, adminLoading, navigate]);
+
   // Cargar materias desde el backend
   useEffect(() => {
+    if (!isAdmin) return; // evitar fetch si no es admin
     let active = true;
     const loadSubjects = async () => {
       try {
@@ -36,7 +47,7 @@ const SubjectsRegister: React.FC = () => {
     return () => {
       active = false;
     };
-  }, []);
+  }, [isAdmin]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();

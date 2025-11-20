@@ -63,3 +63,33 @@ export const PublicRoute: React.FC<PublicRouteProps> = ({
 
   return <>{children}</>;
 };
+
+interface AdminRouteProps {
+  children: React.ReactNode;
+  redirectTo?: string;
+}
+
+export const AdminRoute: React.FC<AdminRouteProps> = ({ children, redirectTo = '/dashboard' }) => {
+  const { user, initialLoading, isAdmin, adminLoading } = useAuth();
+
+  if (initialLoading || adminLoading) {
+    return (
+      <div className="min-h-screen bg-black flex items-center justify-center" style={{ paddingTop: '4rem' }}>
+        <div className="text-center">
+          <div className="w-8 h-8 border-2 border-white border-t-transparent rounded-full animate-spin mx-auto mb-4" />
+          <p className="text-white">Cargando...</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (!user) {
+    return <Navigate to="/signin" replace />;
+  }
+
+  if (!isAdmin) {
+    return <Navigate to={redirectTo} replace />;
+  }
+
+  return <>{children}</>;
+};

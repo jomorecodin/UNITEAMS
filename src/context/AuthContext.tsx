@@ -33,6 +33,8 @@ interface AuthContextType {
     avatarUrl?: string;
   }) => Promise<{ error: Error | null }>;
   clearError: () => void;
+  isAdmin: boolean;          // <- agregado
+  adminLoading: boolean;     // <- agregado
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -52,6 +54,39 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [initialLoading, setInitialLoading] = useState(true);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [isAdmin, setIsAdmin] = useState<boolean>(false);
+  const [adminLoading, setAdminLoading] = useState<boolean>(true);
+
+  const checkAdminStatus = useCallback(async () => {
+    setAdminLoading(true);
+    try {
+      const { data } = await supabase.auth.getSession();
+      const token = data.session?.access_token || null;
+      if (!token) {
+        setIsAdmin(false);
+        return;
+      }
+      const res = await fetch('http://localhost:8080/api/admin/status', {
+        headers: {
+          Accept: 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
+      });
+      if (!res.ok) {
+        setIsAdmin(false);
+        return;
+      }
+      const text = await res.text();
+      let json: any = {};
+      try { json = text ? JSON.parse(text) : {}; } catch {}
+      const value = json?.isAdmin ?? json?.is_admin ?? json?.admin ?? false;
+      setIsAdmin(!!value);
+    } catch {
+      setIsAdmin(false);
+    } finally {
+      setAdminLoading(false);
+    }
+  }, []);
 
   // Función para obtener el perfil del usuario
   const fetchUserProfile = useCallback(async (userId: string, currentUser?: User): Promise<UserProfile | null> => {
@@ -237,6 +272,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         // Actualizar estado con la sesión actual
         await updateAuthState(currentSession);
 
+        // NUEVO: verificar admin al iniciar
+        await checkAdminStatus();
+
         // Suscribirse a cambios de autenticación
         const authSubscription = supabase.auth.onAuthStateChange(async (event, newSession) => {
           if (!isMounted) return;
@@ -255,6 +293,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           // Para otros eventos, actualizar estado completo
           await updateAuthState(newSession);
 
+          // NUEVO: actualizar admin cuando cambie la sesión
+          await checkAdminStatus();
+
           // Limpiar error cuando hay una sesión válida
           if (newSession) {
             setError(null);
@@ -272,6 +313,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           setUser(null);
           setProfile(null);
           setInitialLoading(false);
+          setIsAdmin(false);
+          setAdminLoading(false);
         }
       }
     };
@@ -280,11 +323,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
     return () => {
       isMounted = false;
-      if (subscription) {
-        subscription.unsubscribe();
-      }
+      if (subscription) subscription.unsubscribe();
     };
-  }, [updateAuthState]);
+  }, [updateAuthState, checkAdminStatus]);
 
   const signUp = async (email: string, password: string, firstName?: string, lastName?: string) => {
     setLoading(true);
@@ -364,6 +405,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       setSession(null);
       setUser(null);
       setProfile(null);
+      setIsAdmin(false);
+      setAdminLoading(false);
       
       // Cerrar sesión en Supabase
       const { error: signOutError } = await supabase.auth.signOut();
@@ -532,7 +575,29 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     signOut,
     updateProfile,
     clearError,
+    isAdmin,
+    adminLoading,
   };
 
-  return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
+  return (
+    <AuthContext.Provider
+      value={{
+        user,
+        session,
+        profile,
+        loading,
+        initialLoading,
+        error,
+        signUp,
+        signIn,
+        signOut,
+        updateProfile,
+        clearError,
+        isAdmin,
+        adminLoading,
+      }}
+    >
+      {children}
+    </AuthContext.Provider>
+  );
 }

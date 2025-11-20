@@ -326,7 +326,7 @@ const SessionsManager: React.FC<SessionsManagerProps> = ({ initialSessions = [] 
 };
 
 export const Dashboard: React.FC = () => {
-  const { user, profile, signOut, loading, initialLoading } = useAuth();
+  const { user, profile, signOut, loading, initialLoading, isAdmin } = useAuth();
   const navigate = useNavigate(); // <-- hook de navegación
   const [studySessions, setStudySessions] = useState<StudySession[]>([]);
   const [calendarLoading, setCalendarLoading] = useState(true);
@@ -875,61 +875,44 @@ export const Dashboard: React.FC = () => {
             </div>
           </Card>
 
-          <Card className="p-6">
-            <div className="text-center">
-              <div className="w-12 h-12 bg-neutral-800 rounded-full mx-auto mb-4 flex items-center justify-center">
-                <span className="text-white text-xl">📚</span>
-              </div>
-              <h3 className="text-lg font-semibold text-white mb-2">
-                Mis Materias
-              </h3>
-              <p className="text-neutral-400 text-sm mb-4">
-                Gestiona tu registro de materias
-              </p>
-              <Link to="/subjects-register">
-                <Button variant="primary" className="w-full">
-                  Ver Materias
-                </Button>
-              </Link>
-            </div>
-          </Card>
-
           {/* Card de aceptación de tutor (solo para administradores) */}
-          <Card className="p-6">
-            <div className="text-center">
-              <div className="w-12 h-12 bg-neutral-800 rounded-full mx-auto mb-4 flex items-center justify-center">
-                <span className="text-white text-xl">✅</span>
-              </div>
-              <h3 className="text-lg font-semibold text-white mb-2">
-                Aceptación de tutor
-              </h3>
-              <p className="text-neutral-400 text-sm mb-4">
-                Gestiona las solicitudes de tutoría pendientes.
-              </p>
-              <div className="mt-4">
-                <Link to="/accept-tutor">
-                  <Button variant="primary" className="w-full">Ir</Button>
-                </Link>
-              </div>
-            </div>
-          </Card>
-
-          {/* NUEVO: Card visible solo si es tutor */}
-          {isTutor && !tutorCheckLoading && (
+          {isAdmin && (
             <Card className="p-6">
               <div className="text-center">
                 <div className="w-12 h-12 bg-neutral-800 rounded-full mx-auto mb-4 flex items-center justify-center">
-                  <span className="text-white text-xl">👥</span>
+                  <span className="text-white text-xl">✅</span>
                 </div>
                 <h3 className="text-lg font-semibold text-white mb-2">
-                  Postularse a un grupo
+                  Aceptación de tutor
                 </h3>
                 <p className="text-neutral-400 text-sm mb-4">
-                  Únete a grupos de estudio disponibles como tutor
+                  Gestiona las solicitudes de tutoría pendientes.
                 </p>
-                <Link to="/apply-to-group">
+                <div className="mt-4">
+                  <Link to="/accept-tutor">
+                    <Button variant="primary" className="w-full">Ir</Button>
+                  </Link>
+                </div>
+              </div>
+            </Card>
+          )}
+
+          {/* Mis Materias (solo administradores) */}
+          {isAdmin && (
+            <Card className="p-6">
+              <div className="text-center">
+                <div className="w-12 h-12 bg-neutral-800 rounded-full mx-auto mb-4 flex items-center justify-center">
+                  <span className="text-white text-xl">📚</span>
+                </div>
+                <h3 className="text-lg font-semibold text-white mb-2">
+                  Mis Materias
+                </h3>
+                <p className="text-neutral-400 text-sm mb-4">
+                  Gestiona tu registro de materias
+                </p>
+                <Link to="/subjects-register">
                   <Button variant="primary" className="w-full">
-                    Ver grupos
+                    Ver Materias
                   </Button>
                 </Link>
               </div>

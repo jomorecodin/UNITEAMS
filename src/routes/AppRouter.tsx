@@ -1,7 +1,7 @@
 import React from 'react';
 import { BrowserRouter as Router, Routes, Route } from 'react-router-dom';
 import { AuthProvider } from '../context/AuthContext';
-import { ProtectedRoute, PublicRoute } from './ProtectedRoute';
+import { ProtectedRoute, PublicRoute, AdminRoute } from './ProtectedRoute';
 import { Navbar } from '../components/Navbar';
 import { Footer } from '../components/Footer';
 import { Landing } from '../pages/Landing';
@@ -66,9 +66,9 @@ export const AppRouter: React.FC = () => {
               <Route 
                 path="/subjects-register" 
                 element={
-                  <ProtectedRoute>
+                  <AdminRoute>
                     <SubjectsRegister />
-                  </ProtectedRoute>
+                  </AdminRoute>
                 } 
               />
               <Route 
@@ -90,9 +90,9 @@ export const AppRouter: React.FC = () => {
               <Route 
                 path="/accept-tutor" 
                 element={
-                  <ProtectedRoute>
+                  <AdminRoute>
                     <AcceptTutor />
-                  </ProtectedRoute>
+                  </AdminRoute>
                 } 
               />
               <Route 
